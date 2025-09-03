@@ -1,5 +1,5 @@
 module pm_parameters
-  use amr_parameters, ONLY: dp
+  use amr_parameters, ONLY: dp, huge_num
   integer::nsinkmax=2000            ! Maximum number of sinks
   integer::npartmax=0               ! Maximum number of particles
   integer::npart=0                  ! Actual number of particles
@@ -18,6 +18,7 @@ module pm_parameters
   real(dp)::sink_soft=2                      ! Sink grav softening length in dx at levelmax for "direct force" sinks
   real(dp)::mass_sink_direct_force=-1        ! mass above which sinks are treated as "direct force" objects
   integer::nlevelmax_sink=0                  ! HACK to put sinks at coarser level (for sims which are not fully refined)
+  logical::sink_constant_phys_radius=.true.  ! Whether to make the sink injection radius constant in physical or comoving coordinates
 
   logical::create_sinks=.false.              ! turn formation of new sinks on
   logical::check_energies=.true.             ! when flagging clumps for sink formation, check whether their gravitational energy is dominant
@@ -26,15 +27,16 @@ module pm_parameters
                                              ! used also as contraction timescale in creation
   real(dp)::cont_speed=0                     ! Clump contraction rate
 
-  character(LEN=15)::accretion_scheme='none' ! Sink accretion scheme; options: 'none', 'bondi', 'threshold'
+  character(LEN=15)::accretion_scheme='none' ! Sink accretion scheme; options: 'none', 'bondi', 'threshold', 'flux'
   logical::threshold_accretion=.false.       ! NOT A NAMELIST PARAMETER
   logical::bondi_accretion=.false.           ! NOT A NAMELIST PARAMETER
+  logical::flux_accretion=.false.           ! NOT A NAMELIST PARAMETER
   logical::bondi_use_vrel=.true.             ! Use v_rel^2 in the denominator of Bondi formula
   real(dp)::c_acc=0.75                       ! "courant factor" for sink accretion
                                              ! gives fraction of available gas that can be accreted in one timestep
   real(dp)::mass_sink_seed=0                 ! Initial sink mass
   real(dp)::mass_smbh_seed=0                 ! Initial SMBH mass
-  real(dp)::mass_merger_vel_check=1d100      ! Threshold for velocity check in merging in M_sun; default: don't check
+  real(dp)::mass_merger_vel_check=huge_num      ! Threshold for velocity check in merging in M_sun; default: don't check
 
   logical::eddington_limit=.false.           ! Switch for Eddington limit for the smbh case
   logical::clump_core=.false.                ! Trims the clump (for star formation)
@@ -62,6 +64,7 @@ module pm_parameters
   real(dp)::mass_star_AGN=0d0               ! Minimum mass of stars in the clump for sink creation
 
   real(dp)::boost_threshold_density=0.1d0   ! Accretion boost threshold for Bondi
+  logical::use_bondi_correction=.false.     ! Whether to switch to bondi when sonic radius is not resolved (Kang+2025)
 
   real(dp)::max_mass_nsc=1d15               ! Maximum mass of the Nuclear Star Cluster (msink)
 
@@ -86,5 +89,18 @@ module pm_parameters
 
   integer :: tracer_first_balance_levelmin = -1  ! Set to >0 to add more weight on level finer than this
   integer :: tracer_first_balance_part_per_cell = 0 ! Typical initial number of parts per cell
+
+#ifdef INDIVIDUAL_SINK_STARS
+  real(dp) :: p3_mchar=20.d0 ! Characteristic mass of Pop III stars
+  real(dp) :: z_crit_pop3 = 4.69 ! 10^-4 Zsol
+  real(dp) :: group_mass = 4.d0
+  real(dp) :: lp_mass = 20.d0
+  real(dp) :: imf_m0 = 0.1d0
+  real(dp) :: imf_m1 = 0.5d0
+  real(dp) :: imf_m2 = 300.d0
+  real(dp) :: imf_a1 = -1.3d0
+  real(dp) :: imf_a2 = -2.3d0
+  integer :: uniform_rand_seed = 42 
+#endif 
 
 end module pm_parameters

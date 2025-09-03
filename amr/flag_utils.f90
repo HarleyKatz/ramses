@@ -280,6 +280,7 @@ subroutine userflag_fine(ilevel)
   use amr_commons
   use hydro_commons
   use cooling_module
+  use pm_parameters, only: nlevelmax_sink
   implicit none
   integer::ilevel
   ! -------------------------------------------------------------------
@@ -333,6 +334,24 @@ subroutine userflag_fine(ilevel)
      if(ilevel.gt.nlevelmax_part+nlevel_collapse)then
         if(dx_loc<2d0*dx_min*(0.8/aexp)) prevent_refine=.true.
      endif
+
+     ! Get the current maximum allowed levelmax
+     ! Probably redundant doing this here...
+     levelmax_current = levelmin
+     do ind=levelmin,nlevelmax
+        ! Finest cell size
+        dx_min=(0.5D0**nlevelmax)*scale
+
+        if(ind.gt.nlevelmax_part+nlevel_collapse)then
+           if((0.5D0**ind)*scale<2d0*dx_min*(0.8/aexp)) then 
+              levelmax_current = ind
+              exit ! Exit level loop on first instance
+           end if
+        endif
+     end do
+
+     ! Update the sink to sit on the current levelmax
+     if(sink) nlevelmax_sink = levelmax_current
   endif
 
   if(prevent_refine)return

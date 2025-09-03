@@ -4,15 +4,48 @@ subroutine output_sink_csv(filename)
   implicit none
   character(LEN=80)::filename,fileloc
 
-  integer::isink
+  integer::isink, i
 
   if(verbose)write(*,*)'Entering output_sink_csv'
 
   fileloc=TRIM(filename)
+#ifdef INDIVIDUAL_SINK_STARS
+  open(unit=123,file=TRIM(fileloc),form='formatted',status='replace', recl=5000)
+#else
   open(unit=123,file=TRIM(fileloc),form='formatted',status='replace', recl=500)
+#endif
   !======================
   ! Write sink properties
   !======================
+#ifdef INDIVIDUAL_SINK_STARS
+  write(123,'(" # id,msink,x,y,z,vx,vy,vz,lx,ly,lz,tform,acc_rate,del_mass,rho_gas,cs**2,etherm,vx_gas,vy_gas,vz_gas,mbh,dmfsink,level,final_mass,evolution_flag,tms")',advance='no')
+  do i = 1, NMETALS
+     write(123, '(A,I0)', advance='no') ',metal', i
+  end do
+  write(123, *) ! Move to a new line
+  write(123,'(" # 1,m,l,l,l,l t**-1,l t**-1,l t**-1,m l**2 t**-1,m l**2 t**-1,m l**2 t**-1,t,m t**-1,m,m l**-3,l**2 t**-2,m l**2 t**-2,l t**-1,l t**-1,l t**-1,m,m,1,m,1,t")',advance='no')
+  do i = 1, NMETALS
+     write(123, '(A)', advance='no') ',1'
+  end do
+  write(123, *) ! Move to a new line
+  do isink=1,nsink
+     write(123,'(I10,21(A1,ES17.10),A1,I10,A1,ES17.10,A1,I10,A1,ES17.10)',advance='no')idsink(isink),',',msink(isink),&
+          ',',xsink(isink,1),',',xsink(isink,2),',',xsink(isink,3),&
+          ',',vsink(isink,1),',',vsink(isink,2),',',vsink(isink,3),&
+          ',',lsink(isink,1),',',lsink(isink,2),',',lsink(isink,3),&
+          ',',tsink(isink),',',dMBHoverdt(isink),&
+          ',',delta_mass(isink),&
+          ',',rho_gas(isink),',',c2sink(isink),',',eps_sink(isink),&
+          ',',vel_gas(isink,1),',',vel_gas(isink,2),',',vel_gas(isink,3),&
+          ',',msmbh(isink),',',dmfsink(isink),',',sinkint_level,',',msink_actual(isink),&
+          ',',evolution_flag(isink),',',main_sequence_time(isink)
+     do i = 1, NMETALS
+        write(123, '(A1,ES17.10)', advance='no') ',',sink_metallicity(isink, i)
+     end do
+     write(123, *) ! Move to a new line
+
+  end do
+#else
   write(123,'(" # id,msink,x,y,z,vx,vy,vz,lx,ly,lz,tform,acc_rate,del_mass,rho_gas,cs**2,etherm,vx_gas,vy_gas,vz_gas,mbh,dmfsink,level ")')
   write(123,'(" # 1,m,l,l,l,l t**-1,l t**-1,l t**-1,m l**2 t**-1,m l**2 t**-1,m l**2 t**-1,t,m t**-1,m,m l**-3,l**2 t**-2,m l**2 t**-2,l t**-1,l t**-1,l t**-1,m,m,1")')
   do isink=1,nsink
@@ -26,7 +59,7 @@ subroutine output_sink_csv(filename)
           ',',vel_gas(isink,1),',',vel_gas(isink,2),',',vel_gas(isink,3),&
           ',',msmbh(isink),',',dmfsink(isink),',',sinkint_level
   end do
-
+#endif
   close(123)
 
 end subroutine output_sink_csv

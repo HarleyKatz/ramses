@@ -2,6 +2,9 @@ subroutine read_params
   use amr_commons
   use hydro_parameters, only:nvar,nhydro
   use mpi_mod
+#ifdef RTZ 
+  use rtz_module
+#endif
   implicit none
   !--------------------------------------------------
   ! Local variables
@@ -50,7 +53,7 @@ subroutine read_params
   write(*,'(" Working with nproc = ",I5," for ndim = ",I1)')ncpu,ndim
   ! Check nvar is not too small
 #ifdef SOLVERhydro
-  write(*,'(" Using solver = hydro with nvar = ",I2)')nvar
+  write(*,'(" Using solver = hydro with nvar = ",I3)')nvar
   if(nvar<nhydro)then
      write(*,*)'You should have: nvar>=ndim+2'
      write(*,'(" Please recompile with -DNVAR=",I2)')nhydro
@@ -413,6 +416,7 @@ subroutine read_amr_params(namelist_unit,nml_ok)
    ! Verify input
    levelmin=MAX(levelmin,1)
    nlevelmax=levelmax
+   levelmax_current=nlevelmax
    if(nlevelmax<levelmin)then
       if(myid==1)write(*,*)'Error in the namelist:'
       if(myid==1)write(*,*)'levelmax should not be lower than levelmin'

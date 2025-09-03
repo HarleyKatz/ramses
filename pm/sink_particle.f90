@@ -193,7 +193,12 @@ subroutine create_cloud_from_sink
   ! Mesh spacing in that level
   nx_loc=(icoarse_max-icoarse_min+1)
   scale=boxlen/dble(nx_loc)
-  dx_min=scale*0.5D0**nlevelmax_sink/aexp
+!   dx_min=scale*0.5D0**nlevelmax_sink/aexp
+  dx_min=scale*0.5D0**nlevelmax_sink
+  if (sink_constant_phys_radius) then 
+     dx_min=dx_min/aexp
+  end if
+   
 
   rmax=dble(ir_cloud)*dx_min
   rmass=dble(ir_cloud_massive)*dx_min
@@ -223,6 +228,10 @@ subroutine create_cloud_from_sink
                     idp(indp)          = -isink
                     typep(indp)%family = FAM_CLOUD
                     typep(indp)%tag    = 0
+                    ! Tag the central cloud particle
+                    if (kk.eq.0 .and. jj.eq.0 .and. ii.eq.0) then
+                       typep(indp)%tag    = 1
+                    end if
                     levelp(indp)       = levelmin
                     if (rr<=rmass)then
                        ! check if direct_force is turned on
@@ -383,7 +392,7 @@ subroutine collect_acczone_avg(ilevel)
   if(verbose)write(*,111)ilevel
 
   ! Compute (volume weighted) averages over accretion zone
-  wden=0d0; wvol=0d0; weth=0d0; wmom=0d0
+  wden=0d0; wvol=0d0; weth=0d0; wmom=0d0; wdiv=0d0
 
   ! Loop over cpus
   do icpu=1,ncpu
@@ -453,11 +462,13 @@ subroutine collect_acczone_avg(ilevel)
      call MPI_ALLREDUCE(wvol,wvol_new,nsinkmax,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
      call MPI_ALLREDUCE(weth,weth_new,nsinkmax,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
      call MPI_ALLREDUCE(wmom,wmom_new,nsinkmax*ndim,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
+     call MPI_ALLREDUCE(wdiv,wdiv_new,nsinkmax,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
 #else
      wden_new=wden
      wvol_new=wvol
      weth_new=weth
      wmom_new=wmom
+     wdiv_new=wdiv
 #endif
   endif
 
@@ -466,6 +477,7 @@ subroutine collect_acczone_avg(ilevel)
      weighted_volume(isink,ilevel)=wvol_new(isink)
      weighted_momentum(isink,ilevel,1:ndim)=wmom_new(isink,1:ndim)
      weighted_ethermal(isink,ilevel)=weth_new(isink)
+     weighted_divergence(isink,ilevel)=wdiv_new(isink)
   end do
 
 111 format('   Entering collect_acczone_avg for level ',I2)
@@ -494,7 +506,7 @@ subroutine collect_acczone_avg_np(ind_grid,ind_part,ind_grid_part,ng,np,ilevel)
   integer::irad
 #endif
   real(dp)::d,e,v2
-  real(dp)::scale,weight,dx_cloud,vol_cloud
+  real(dp)::scale,weight,dx_cloud,vol_cloud,dx_min
   real(dp),dimension(1:ndim)::vv
 #ifdef SOLVERmhd
   real(dp)::bx1,bx2,by1,by2,bz1,bz2
@@ -504,17 +516,47 @@ subroutine collect_acczone_avg_np(ind_grid,ind_part,ind_grid_part,ng,np,ilevel)
   real(dp),dimension(1:nvector,1:ndim,1:twotondim)::xx
   real(dp),dimension(1:nvector,1:twotondim)::vol
   logical, dimension(1:nvector,1:twotondim)::ok
+  real(dp),dimension(1:nvector,1:nvar_all),save::fluid_var_left,fluid_var_right,fluid_var
+  real(dp),dimension(1:nvector),save::divpart
 
   ! Compute volume of each cloud particle
   nx_loc=(icoarse_max-icoarse_min+1)
   scale=boxlen/dble(nx_loc)
-  dx_cloud=(0.5D0**nlevelmax_sink)*scale/aexp/2 ! factor of 2 hard-coded
+!   dx_cloud=(0.5D0**nlevelmax_sink)*scale/aexp/2
+  dx_cloud=(0.5D0**nlevelmax_sink)*scale/2 ! factor of 2 hard-coded
+  if (sink_constant_phys_radius) then
+     dx_cloud = dx_cloud / aexp
+  end if
   vol_cloud=dx_cloud**ndim
 
   ! Copy cloud particle coordinates
   do idim=1,ndim
      do j=1,np
         xpart(j,idim)=xp(ind_part(j),idim)
+     end do
+  end do
+
+  !--------------------------------------------------------------------------------
+  ! Compute rho(v-vsink) divergence around each cloud particle <--- NC
+  !--------------------------------------------------------------------------------
+  divpart = 0d0
+  do idim=1,ndim
+     do j=1,np
+        !use min cell spacing to obtain right position, get right cell index
+        xpart(j,idim)=xpart(j,idim)+0.5*dx_cloud
+        call cic_get_vals(fluid_var_right,ind_grid,xpart,ind_grid_part,ng,np,ilevel,.false.)
+
+        !use min cell spacing to obtain left position, get left cell index
+        xpart(j,idim)=xpart(j,idim)-dx_cloud
+        call cic_get_vals(fluid_var_left,ind_grid,xpart,ind_grid_part,ng,np,ilevel,.false.)
+
+        !back to original position
+        xpart(j,idim)=xpart(j,idim)+0.5*dx_cloud
+
+        !compute divergence of (rho*v - rho*vsink) in one go
+        isink=-idp(ind_part(j))
+        divpart(j)=divpart(j)+(fluid_var_right(j,idim+1)-fluid_var_right(j,1)*vsink(isink,idim)-&
+             fluid_var_left(j,idim+1)+fluid_var_left(j,1)*vsink(isink,idim))/dx_cloud
      end do
   end do
 
@@ -562,6 +604,7 @@ subroutine collect_acczone_avg_np(ind_grid,ind_part,ind_grid_part,ng,np,ilevel)
            wden(isink)=wden(isink)+weight*d
            wmom(isink,1:ndim)=wmom(isink,1:ndim)+weight*d*vv(1:ndim)
            weth(isink)=weth(isink)+weight*d*e
+           wdiv(isink)=wdiv(isink)+weight*divpart(j)
 
         endif
      end do
@@ -577,6 +620,13 @@ subroutine grow_sink(ilevel,on_creation)
   use amr_commons
   use hydro_commons
   use mpi_mod
+#ifdef INDIVIDUAL_SINK_STARS
+  use metal_yields_module
+  use imf_module
+  use rtz_module
+  use SED_module, only: interpolate_popii_age
+  use constants, only: M_sun
+#endif
   implicit none
 #ifndef WITHOUTMPI
   integer::info
@@ -592,6 +642,13 @@ subroutine grow_sink(ilevel,on_creation)
   integer::igrid,jgrid,ipart,jpart,next_part
   integer::ig,ip,npart1,npart2,icpu,isink,lev
   integer,dimension(1:nvector)::ind_grid,ind_part,ind_grid_part
+#ifdef INDIVIDUAL_SINK_STARS
+  integer:: im, counter, iElement
+  real(dp):: ms_lifetime, star_age_myr, star_met
+  logical:: is_hn, is_sn
+  real(dp)::factG,scale_nH,scale_T2,scale_l,scale_d,scale_t,scale_v,scale_m
+  real(dp),dimension(1:NMETALS)::loc_metal_yield
+#endif
 
   if(accretion_scheme=='none'.and.(.not.on_creation))return
   if(verbose)write(*,111)ilevel
@@ -602,6 +659,13 @@ subroutine grow_sink(ilevel,on_creation)
   ! Reset new sink variables
   msink_new=0d0; msmbh_new=0d0; dmfsink_new=0d0
   xsink_new=0d0; vsink_new=0d0; lsink_new=0d0; delta_mass_new=0d0
+#ifdef INDIVIDUAL_SINK_STARS
+  sink_metallicity_new=0.d0
+
+  ! Get the units
+  call units(scale_l,scale_t,scale_d,scale_v,scale_nH,scale_T2)
+  scale_m=scale_d*scale_l**ndim
+#endif
 
   ! Loop over cpus
   do icpu=1,ncpu
@@ -668,6 +732,9 @@ subroutine grow_sink(ilevel,on_creation)
      call MPI_ALLREDUCE(vsink_new,vsink_all,nsinkmax*ndim,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
      call MPI_ALLREDUCE(lsink_new,lsink_all,nsinkmax*ndim,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
      call MPI_ALLREDUCE(delta_mass_new,delta_mass_all,nsinkmax,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
+#ifdef INDIVIDUAL_SINK_STARS 
+     call MPI_ALLREDUCE(sink_metallicity_new,sink_metallicity_all,nsinkmax*NMETALS,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
+#endif
 #else
      msink_all=msink_new
      msmbh_all=msmbh_new
@@ -676,6 +743,9 @@ subroutine grow_sink(ilevel,on_creation)
      vsink_all=vsink_new
      lsink_all=lsink_new
      delta_mass_all=delta_mass_new
+#ifdef INDIVIDUAL_SINK_STARS
+     sink_metallicity_all = sink_metallicity_new
+#endif
 #endif
   endif
 
@@ -686,6 +756,142 @@ subroutine grow_sink(ilevel,on_creation)
         msink(isink)=msink(isink)+msink_all(isink)
         msmbh(isink)=msmbh(isink)+msmbh_all(isink)
         dmfsink(isink)=dmfsink(isink)+dmfsink_all(isink)
+
+#ifdef INDIVIDUAL_SINK_STARS
+        !Update metallicity
+        do im=1,NMETALS
+           sink_metallicity(isink,im) = sink_metallicity(isink,im) + sink_metallicity_all(isink,im)
+        end do
+
+        ! Get the stellar metallicity
+        ! TODO(code): Hardcoded for N metals
+        star_met = 12.d0 + LOG10((sink_metallicity(isink,5)+1.d-40)/(sink_metallicity(isink,1) * 15.9994d0))
+
+        ! Check if we are on the post main-sequence
+        if (evolution_flag(isink).eq.0) then
+           ! Get the age of the star
+           star_age_Myr = getStarAgeMyr(main_sequence_time(isink))
+
+           ! Pop III case
+           if (star_met.lt.z_crit_pop3) then
+              ! Get the main-sequence lifetime
+              ms_lifetime = get_pop3_lifetime_myr(msink_actual(isink))
+
+              ! Check if the stellar age is older than the main-sequence lifetime
+              if (star_age_Myr.gt.ms_lifetime) then
+                 if (myid.eq.1) then
+                    write(*,*) "Sink ",isink," with mass ",msink_actual(isink)* scale_m/M_sun," exploded as a Pop III SN at an age of",star_age_Myr
+                 end if
+
+                 evolution_flag(isink) = 2
+
+                 ! Now get the mass loss
+                 counter = 0
+                 is_hn = .false.
+                 if (MOD(isink,2).eq.0) is_hn = .true.
+                 do iElement = 1,27
+                    if (elements(iElement)%atomic_number .gt. 0) then
+                       counter = counter + 1
+                       loc_metal_yield(counter) = get_popIII_ejecta(msink_actual(isink) * scale_m/M_sun, iElement, is_hn)
+                    end if
+                 end do
+                 msink(isink) = msink(isink) - (sum(loc_metal_yield) / (scale_m/M_sun))
+              end if
+
+           ! Pop II case
+           else
+              ! Convert metallicity to format needed by portinari
+              star_met = (10.d0**(star_met - 8.69d0)) * 0.02d0
+
+              ! Get the main-sequence lifetime 
+              ms_lifetime = interpolate_popII_age(msink_actual(isink) * scale_m/M_sun)
+
+              ! Check if the stellar age is older than the main-sequence lifetime
+              if (star_age_Myr.gt.ms_lifetime) then
+                 if (myid.eq.1) then
+                    write(*,*) "Sink ",isink," with mass ",msink_actual(isink)* scale_m/M_sun," exploded as a CCSN at an age of",star_age_Myr
+                 end if
+
+                 ! Update the evolution flag
+                 evolution_flag(isink) = 2
+
+                 ! Now get the mass loss for normal SN
+                 if (msink_actual(isink).ge.8.d0) then 
+                    counter = 0
+                    do iElement = 1,27
+                       if (elements(iElement)%atomic_number .gt. 0) then
+                          counter = counter + 1
+                          loc_metal_yield(counter) = get_portinari_ejecta_mass(star_met, msink_actual(isink) * scale_m/M_sun, iElement)
+                       end if
+                    end do
+                    msink(isink) = msink(isink) - (sum(loc_metal_yield) / (scale_m/M_sun))
+                 end if
+              end if
+           end if
+        end if
+
+        ! Check if there has been a SNIa
+        if (star_met.ge.z_crit_pop3 .and. msink_actual(isink).ge.MAX(group_mass,3.d0) .and. msink_actual(isink).lt.8.d0 .and. evolution_flag(isink).eq.2) then 
+
+           ! Get the age of the star
+           star_age_Myr = getStarAgeMyr(main_sequence_time(isink))
+
+           ! Get the main-sequence lifetime
+           ms_lifetime = get_stellar_lifetime_low_mass(star_met,msink_actual(isink) * scale_m/M_sun)
+
+           ! Stochastically sample SNIa
+           is_sn = get_SNIa_prob(imf_m0,imf_m1,imf_m2,imf_a1,imf_a2,group_mass,star_age_Myr,ms_lifetime,isink)   
+
+           if (is_sn) then 
+              if (myid.eq.1) then
+                 write(*,*) "Sink ",isink," with mass ",msink_actual(isink)* scale_m/M_sun," exploded as a SNIa at an age of",star_age_Myr
+              end if
+
+              ! Get the mass loss
+              counter = 0
+              do iElement = 1,27
+                 if (elements(iElement)%atomic_number .gt. 0) then
+                    counter = counter + 1
+                    loc_metal_yield(counter) = get_SNIa_ejecta(iElement)
+                 end if
+              end do
+              msink(isink) = msink(isink) - (sum(loc_metal_yield) / (scale_m/M_sun))
+
+              ! Update the evolution flag so we don't launch another SNIa
+              evolution_flag(isink) = 3
+           end if
+        end if
+
+        ! Check if we are on the main-sequence
+        if (msink(isink).ge.msink_actual(isink)) then
+
+           ! If the star is pre main-sequence put it on the main sequence
+           if (ABS(evolution_flag(isink)).eq.1) then
+              ! Store the time the particle reached the main sequence
+              if (use_proper_time) then
+                 main_sequence_time(isink)=texp
+              else
+                 main_sequence_time(isink)=t
+              endif
+
+              ! Put the star on the main sequence if we have reached or exceeded the target mass
+              ! If it's a group of low mass stars, set the flag to -2
+              if (evolution_flag(isink).eq.1) then
+                 if (myid.eq.1) then
+                    write(*,*) "Sink ",isink," with mass ",msink_actual(isink) * scale_m/M_sun," reached the main-sequence"
+                 end if
+                 evolution_flag(isink) = 0
+              else 
+                 evolution_flag(isink) = -2
+              end if
+
+              ! Now need to reset msink_actual because we probably overshot the mass by a small amount
+              ! This will allow us to compute stellar evolution more accurately
+              msink_actual(isink) = msink(isink)
+           end if
+        end if
+
+#endif
 
         ! Reset jump in old sink coordinates
         do lev=levelmin,nlevelmax
@@ -726,7 +932,14 @@ subroutine accrete_sink(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,on_creation
   use constants, only: pi, twopi, c_cgs, factG_in_cgs, M_sun, mH, sigma_t, ev2erg
 #ifdef RT
   use rt_hydro_commons,only: rtunew
-  use rt_parameters,only: nGroups, iGroups, group_egy, rt_AGN, group_egy_AGNfrac
+  use rt_parameters,only: nGroups, iGroups, group_egy, rt_AGN, group_egy_AGNfrac, iIons
+#endif
+#ifdef RTZ
+  use rtz_module
+  use metal_yields_module
+#endif
+#ifdef INDIVIDUAL_SINK_STARS
+  use imf_module
 #endif
   implicit none
   !----------------------------------------------------------------------------
@@ -770,6 +983,15 @@ subroutine accrete_sink(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,on_creation
   real(dp)::tan_theta,cone_dist,orth_dist
   real(dp),dimension(1:ndim)::cone_dir
   real(dp)::acc_ratio,v_AGN
+  real(dp):: d_sink_loc
+
+#ifdef INDIVIDUAL_SINK_STARS
+  real(dp),dimension(1:NMETALS)::loc_metal_yield
+  real(dp)::star_met, star_age_Myr, ms_lifetime, sn_e, injected_mass
+  real(dp)::ekinetic, ijm, sn_e_code_units, pre_sn_density
+  logical::is_hn, is_sn, is_central_cloud_particle
+  integer::counter, iElement, pre_accretion_evolution_flag
+#endif
 
   ! Conversion factor from user units to cgs units
   call units(scale_l,scale_t,scale_d,scale_v,scale_nH,scale_T2)
@@ -789,7 +1011,11 @@ subroutine accrete_sink(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,on_creation
   scale=boxlen/dble(nx_loc)
   dx_loc=dx*scale
   vol_loc=dx_loc**ndim
-  dx_min=scale*0.5D0**nlevelmax_sink/aexp
+!   dx_min=scale*0.5D0**nlevelmax_sink/aexp
+  dx_min=scale*0.5D0**nlevelmax_sink
+  if (sink_constant_phys_radius) then 
+     dx_min=dx_min/aexp
+  end if
   vol_min=dx_min**ndim
 
   ! Compute volume of each cloud particle
@@ -886,7 +1112,7 @@ subroutine accrete_sink(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,on_creation
                  m_acc_smbh=0
               end if
            else
-              if (bondi_accretion)then
+              if (bondi_accretion.or.flux_accretion)then
                  m_acc      = dMsink_overdt(isink)*dtnew(ilevel)*weight/volume
                  m_acc_smbh = dMsmbh_overdt(isink)*dtnew(ilevel)*weight/volume
               end if
@@ -962,8 +1188,159 @@ subroutine accrete_sink(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,on_creation
 
            ! Accrete passive scalars
            do ivar=imetal,nvar
+#ifdef INDIVIDUAL_SINK_STARS
+#if NMETALS > 1
+              if (ivar.lt.imetal+NMETALS) then
+                 sink_metallicity_new(isink,ivar-imetal+1) = sink_metallicity_new(isink,ivar-imetal+1) + m_acc*uold(indp(j,ind),ivar)/d
+              end if
+              !TODO(code) deal with CO here
+#endif
+#endif
               unew(indp(j,ind),ivar)=unew(indp(j,ind),ivar)-m_acc*uold(indp(j,ind),ivar)/d/vol_loc
            end do
+
+
+
+#ifdef INDIVIDUAL_SINK_STARS
+           ! SN feedback
+           if(.not.on_creation)then
+              ! Initialize SN feedback to false
+              is_sn = .false.
+
+              ! Get the metallicity of the star particle --> defined here purely based on the
+              ! oxygen abundance
+              ! 1: H, 2: He, 3: C, 4: N, 5: O, 6: Ne, 7: Mg, 8: Si, 9: S, 10: Fe --> hardcoded for now
+              star_met = 12.d0 + LOG10((sink_metallicity(isink,5)+1.d-40)/(sink_metallicity(isink,1) * 15.9994d0))
+
+              ! Check if we are on the main sequence
+              if (evolution_flag(isink).eq.0) then
+
+                 ! Get the age of the star
+                 star_age_Myr = getStarAgeMyr(main_sequence_time(isink))
+
+                 ! Pop III case
+                 if (star_met.lt.z_crit_pop3) then
+                    ! Get the main-sequence lifetime
+                    ms_lifetime = get_pop3_lifetime_myr(msink_actual(isink))
+
+                    ! Check if the stellar age is older than the main-sequence lifetime
+                    if (star_age_Myr.gt.ms_lifetime) then
+                       ! Trigger a SN
+                       is_sn = .true.
+
+                       ! Get the energy of the SN
+                       sn_e = get_popIII_sn_energy(msink_actual(isink),isink)
+
+                       ! Is this a hypernova
+                       is_hn = .false.
+                       if (sn_e.gt.1d51) is_hn = .true.
+
+                       ! Now get the yields
+                       counter = 0
+                       do iElement = 1,27
+                          if (elements(iElement)%atomic_number .gt. 0) then
+                             counter = counter + 1
+                             loc_metal_yield(counter) = get_popIII_ejecta(msink_actual(isink) * scale_m/M_sun, iElement, is_hn)
+                          end if
+                       end do
+                    end if
+
+                 ! Pop II case
+                 else
+                    ! We only explode stars with mass > 8 Msol
+                    if (msink_actual(isink).ge.8.d0) then 
+                        ! Convert metallicity to format needed by portinari
+                        star_met = (10.d0**(star_met - 8.69d0)) * 0.02d0
+
+                        ! Get the main-sequence lifetime
+                        ms_lifetime = get_portinari_stellar_lifetime(star_met,msink_actual(isink) * scale_m/M_sun)
+
+                        ! Check if the stellar age is older than the main-sequence lifetime
+                        if (star_age_Myr.gt.ms_lifetime) then
+                           ! Trigger a SN
+                           is_sn = .true.
+
+                           ! Get the energy of the SN -- defaulted to 10^51 ergs for Pop II for now
+                           sn_e = 1.d51
+
+                           ! Now get the yields
+                           counter = 0
+                           do iElement = 1,27
+                              if (elements(iElement)%atomic_number .gt. 0) then
+                                 counter = counter + 1
+                                 loc_metal_yield(counter) = get_portinari_ejecta_mass(star_met, msink_actual(isink) * scale_m/M_sun, iElement)
+                              end if
+                           end do
+                        end if
+                    end if
+                 end if
+              end if 
+
+              ! SNIa case (typically between 3.0 and 8.0 Msol but we don't let grouped particles explode)
+              ! Only for Pop II stars, in a given mass range that have already evolved off the main sequence
+              if (star_met.ge.z_crit_pop3 .and. msink_actual(isink).ge.MAX(group_mass,3.d0) .and. msink_actual(isink).lt.8.d0 .and. evolution_flag(isink).eq.2) then 
+
+                 ! Get the age of the star
+                 star_age_Myr = getStarAgeMyr(main_sequence_time(isink))
+
+                 ! Get the main-sequence lifetime
+                 ms_lifetime = get_stellar_lifetime_low_mass(star_met,msink_actual(isink) * scale_m/M_sun)
+
+                 ! Stochastically sample SNIa
+                 is_sn = get_SNIa_prob(imf_m0,imf_m1,imf_m2,imf_a1,imf_a2,group_mass,star_age_Myr,ms_lifetime,isink)
+
+                 if (is_sn) then 
+                    ! Get the energy of the SN -- defaulted to 10^51 ergs for SNIa
+                    sn_e = 1.d51
+
+                    ! Now get the yields
+                    counter = 0
+                    do iElement = 1,27
+                       if (elements(iElement)%atomic_number .gt. 0) then
+                          counter = counter + 1
+                          loc_metal_yield(counter) = get_SNIa_ejecta(iElement)
+                       end if
+                    end do
+                 end if
+              end if
+
+              if (is_sn) then
+                 ! Update sink mass
+                 injected_mass = SUM(loc_metal_yield(1:NMETALS)) / (scale_m/M_sun) ! Convert mass loss to code units
+
+                 ! Update the density, thermal energy, metallicity of the cell
+                 ! make sure that the passive scalars are conserved after the update
+                 ekinetic = 0.5d0 * ( vsink(isink,1)**2 &
+                        &           + vsink(isink,2)**2 &
+                        &           + vsink(isink,3)**2 )
+
+                 ! Update hydro variables in the relevant cells
+                 ijm = injected_mass * (weight/volume) / vol_loc
+                 sn_e_code_units = sn_e/scale_d/scale_l/scale_l/scale_l/scale_v/scale_v
+
+                 ! Update density, momentum, and internal energy
+                 pre_sn_density = unew(indp(j,ind),1)
+                 unew(indp(j,ind),1) = unew(indp(j,ind),1) + ijm
+                 unew(indp(j,ind),2) = unew(indp(j,ind),2) + (ijm * vsink(isink,1))
+                 unew(indp(j,ind),3) = unew(indp(j,ind),3) + (ijm * vsink(isink,2))
+                 unew(indp(j,ind),4) = unew(indp(j,ind),4) + (ijm * vsink(isink,3))
+                 unew(indp(j,ind),neul) = unew(indp(j,ind),neul) + (ijm * ekinetic) + &
+                        & (sn_e_code_units * (weight/volume) / vol_loc)
+
+                 ! Update the metals
+                 do iElement=1,NMETALS
+                    unew(indp(j,ind),imetal + iElement - 1) = unew(indp(j,ind),imetal + iElement - 1) + &
+                          & ((loc_metal_yield(iElement) / (scale_m/M_sun)) * (weight/volume) / vol_loc)
+                 end do
+
+                 ! Make sure that the passive scalars maintain the same fractions
+                 do ivar = iIons,nvar
+                    unew(indp(j,ind),ivar) = unew(indp(j,ind),ivar) * (unew(indp(j,ind),1) / pre_sn_density)
+                 end do
+              end if
+
+           end if
+#endif
 
            ! AGN feedback
            ! Only for sinks that could accrete.
@@ -1023,12 +1400,13 @@ subroutine compute_accretion_rate(write_sinks)
   integer::i,nx_loc,isink
   real(dp)::scale_nH,scale_T2,scale_l,scale_d,scale_t,scale_v,scale_m
   real(dp)::factG,d_star,boost
-  real(dp)::vrel2,c2,density,volume,ethermal,dx_min,scale,mgas,v_bondi
-  real(dp)::r2_smbh,rho_inf_smbh
+  real(dp)::vrel2,c2,density,volume,ethermal,dx_min,scale,mgas,v_bondi,divergence
+  real(dp)::r2_smbh,rho_inf_smbh,fa_fact
   real(dp),dimension(1:ndim)::velocity
   real(dp),dimension(1:nsinkmax)::dMEDoverdt,r2,rho_inf
   real(dp),dimension(1:nsinkmax)::dMEDoverdt_smbh
   real(dp)::T2_gas,delta_mass_min
+  real(dp)::d_sink_loc
 
   ! Gravitational constant
   factG=1d0
@@ -1039,7 +1417,11 @@ subroutine compute_accretion_rate(write_sinks)
   scale_m=scale_d*scale_l**ndim
   nx_loc=(icoarse_max-icoarse_min+1)
   scale=boxlen/dble(nx_loc)
-  dx_min=scale*0.5D0**nlevelmax_sink/aexp
+!   dx_min=scale*0.5D0**nlevelmax_sink/aexp
+  dx_min=scale*0.5D0**nlevelmax_sink
+  if (sink_constant_phys_radius) then 
+     dx_min=dx_min/aexp
+  end if
   d_star=n_star/scale_nH
 
   ! Compute sink particle accretion rate by averaging contributions from all levels
@@ -1053,12 +1435,13 @@ subroutine compute_accretion_rate(write_sinks)
      dMEDoverdt_smbh(isink)=0
 
      ! Compute sink sphere average quantities
-     density=0d0; volume=0d0; velocity=0d0; ethermal=0d0
+     density=0d0; volume=0d0; velocity=0d0; ethermal=0d0; divergence=0d0
      do i=levelmin,nlevelmax
         density=density+weighted_density(isink,i)
         ethermal=ethermal+weighted_ethermal(isink,i)
         velocity(1:ndim)=velocity(1:ndim)+weighted_momentum(isink,i,1:ndim)
         volume=volume+weighted_volume(isink,i)
+        divergence=divergence+weighted_divergence(isink,i)
      end do
      mgas=density
      density=density/(volume+tiny(0.0_dp))
@@ -1098,6 +1481,37 @@ subroutine compute_accretion_rate(write_sinks)
 
      ! Compute final sink accretion rate
      if(bondi_accretion)dMsink_overdt(isink)=dMBHoverdt(isink)
+
+     ! Flux accretion - based on mass flux onto the sink
+     if(flux_accretion)then
+        ! Average divergence over all cloud particles multiplied by cloud volume
+        dMsink_overdt(isink)=-1.*divergence
+
+        ! Correct with small factor to keep density close to threshold (see Bleuler+2014)
+        if (n_sink.gt.0.d0) then 
+           d_sink_loc = n_sink / scale_nH
+           fa_fact = (log10(density)-log10(d_sink_loc))*0.1d0+1.0d0
+        else 
+           fa_fact = (log10(density)-log10(d_sink))*0.1d0+1.0d0
+        end if
+        dMsink_overdt(isink)=dMsink_overdt(isink)*fa_fact
+
+        if(use_bondi_correction)then
+           if((0.5*msink(isink)/c2)<(ir_cloud*dx_min))then
+              dMsink_overdt(isink)=dMBHoverdt(isink)
+           end if
+        end if
+     end if
+
+#ifdef INDIVIDUAL_SINK_STARS
+     ! Limit accretion rate so what we don't overshoot the mass by too much
+     ! This only matters in the case of strong accretion
+     if (msink(isink) + dMsink_overdt(isink) * dtnew(levelmax_current) .gt. msink_actual(isink)) then
+        ! Small factor needed in the denominator so we overshoot by a little
+        dMsink_overdt(isink) = (msink_actual(isink) - msink(isink)) / (0.99d0 * dtnew(levelmax_current)) 
+     end if
+#endif
+
      if(eddington_limit)dMsink_overdt(isink)=min(dMBHoverdt(isink),eddington_cap*dMEDoverdt(isink))
 
      if(smbh.and.mass_smbh_seed>0.0)then
@@ -1131,6 +1545,13 @@ subroutine compute_accretion_rate(write_sinks)
      end if
 
      if(msink(isink).ge.max_mass_nsc*M_sun/scale_m.and.mass_smbh_seed>0.0)dMsink_overdt(isink)=0.0
+
+#ifdef INDIVIDUAL_SINK_STARS
+     ! Accretion only onto pre main-sequence stars
+     if(evolution_flag(isink).ne.1) then
+        dMsink_overdt(isink)=0.d0
+     endif
+#endif
 
   end do
 
@@ -1189,7 +1610,10 @@ subroutine print_sink_properties(dMEDoverdt,dMEDoverdt_smbh,rho_inf,r2)
   use pm_commons
   use amr_commons
   use hydro_commons
-  use constants, only: twopi, M_sun, pc2cm, yr2sec
+  use constants, only: twopi, M_sun, pc2cm, yr2sec, Gyr2sec
+#ifdef INDIVIDUAL_SINK_STARS
+  use metal_yields_module, only: getStarAgeMyr
+#endif
   use mpi_mod
   implicit none
   real(dp),dimension(1:nsinkmax)::dMEDoverdt,rho_inf,r2
@@ -1198,6 +1622,7 @@ subroutine print_sink_properties(dMEDoverdt,dMEDoverdt_smbh,rho_inf,r2)
   real(dp)::scale_nH,scale_T2,scale_l,scale_d,scale_t,scale_v,scale_m
   real(dp)::l_abs,l_max,factG,scale,dx_min
   real(dp),dimension(1:ndim)::skip_loc
+  real(dp)::tproper_high_z
 
   ! Gravitational constant
   factG=1d0
@@ -1210,7 +1635,11 @@ subroutine print_sink_properties(dMEDoverdt,dMEDoverdt_smbh,rho_inf,r2)
   skip_loc(2)=dble(jcoarse_min)
   skip_loc(3)=dble(kcoarse_min)
   scale=boxlen/dble(nx_loc)
-  dx_min=0.5D0**nlevelmax_sink*scale/aexp
+!   dx_min=scale*0.5D0**nlevelmax_sink/aexp
+  dx_min=scale*0.5D0**nlevelmax_sink
+  if (sink_constant_phys_radius) then 
+     dx_min=dx_min/aexp
+  end if
 
   ! Scaling factors
   call units(scale_l,scale_t,scale_d,scale_v,scale_nH,scale_T2)
@@ -1267,24 +1696,47 @@ subroutine print_sink_properties(dMEDoverdt,dMEDoverdt_smbh,rho_inf,r2)
         call quick_sort_dp(xmsink(1),idsink_sort(1),nsink)
         write(*,*)'Number of sink = ',nsink
         write(*,*)'Total mass in sink [Msol] = ',sum(msink(1:nsink))*scale_m/M_sun
-        write(*,*)'simulation time [yr] = ',t*scale_t/yr2sec
-        write(*,'(" =============================================================================================================================================")')
-        write(*,'("   Id     M[Msol]          x             y             z         vx[km/s]      vy[km/s]      vz[km/s]     spin/spmax    Mdot[Msol/y]   age[yr]")')
-        write(*,'(" =============================================================================================================================================")')
+        if (use_proper_time) then 
+           call getProperTime_init(tproper_high_z)
+           write(*,*)'simulation time [Myr] = ',(texp*(scale_t/aexp**2)/Gyr2sec - tproper_high_z*(scale_t/aexp**2)/Gyr2sec) * 1e3
+        else
+           write(*,*)'simulation time [yr] = ',t*scale_t/yr2sec
+        end if
+#ifdef INDIVIDUAL_SINK_STARS
+        write(*,'(" ==============================================================================================================================================================")')
+        write(*,'("   Id     M[Msol]      M_F[Msol]         x             y             z         vx[km/s]      vy[km/s]      vz[km/s]     spin/spmax    Mdot[Msol/y]   age[Myr]")')
+        write(*,'(" ==============================================================================================================================================================")')
+#else
+        write(*,'(" ==============================================================================================================================================")')
+        write(*,'("   Id     M[Msol]          x             y             z         vx[km/s]      vy[km/s]      vz[km/s]     spin/spmax    Mdot[Msol/y]   age[Myr]")')
+        write(*,'(" ==============================================================================================================================================")')
+#endif
+        
         do i=nsink,1,-1
            isink=idsink_sort(i)
            l_abs=(lsink(isink,1)**2+lsink(isink,2)**2+lsink(isink,3)**2)**0.5d0
            l_max=msink(isink)*sqrt(factG*msink(isink)/(dble(ir_cloud)*dx_min))*(dble(ir_cloud)*dx_min)
-           write(*,'(I5,10(2X,1PE12.5))')&
+           write(*,'(I5,11(2X,1PE12.5))')&
                 & idsink(isink),&
                 & msink(isink)*scale_m/M_sun,&
+#ifdef INDIVIDUAL_SINK_STARS
+                & msink_actual(isink)*scale_m/M_sun, &
+#endif
                 & xsink(isink,1:ndim),&
                 & vsink(isink,1:ndim)*scale_v/1d5,&
                 & l_abs/l_max,&
                 & dMsink_overdt(isink)*scale_m/scale_t/(M_sun/yr2sec),&
-                & (t-tsink(isink))*scale_t/yr2sec
+#ifdef INDIVIDUAL_SINK_STARS
+                & getStarAgeMyr(tsink(isink))
+#else
+                & ((t-tsink(isink))*scale_t/yr2sec)/1e6
+#endif
         end do
-        write(*,'(" =============================================================================================================================================")')
+#ifdef INDIVIDUAL_SINK_STARS
+        write(*,'(" ==============================================================================================================================================================")')
+#else
+        write(*,'(" ==============================================================================================================================================")')
+#endif
      endif
   endif
 end subroutine print_sink_properties
@@ -1300,6 +1752,10 @@ subroutine make_sink_from_clump(ilevel)
   use clfind_commons
   use constants, only:
   use mpi_mod
+#ifdef INDIVIDUAL_SINK_STARS
+  use imf_module
+  use constants, only: M_sun
+#endif
   implicit none
 
   !----------------------------------------------------------------------------
@@ -1332,6 +1788,10 @@ subroutine make_sink_from_clump(ilevel)
 #endif
 #if NENER>0
   integer ::irad
+#endif
+#ifdef INDIVIDUAL_SINK_STARS
+  integer:: im
+  real(dp):: star_met
 #endif
 
 #if NDIM==3
@@ -1372,6 +1832,9 @@ subroutine make_sink_from_clump(ilevel)
   msink_new=0d0; msmbh_new=0d0; dmfsink_new=0d0
   xsink_new=0d0; vsink_new=0d0; lsink_new=0d0; delta_mass_new=0d0
   tsink_new=0d0; oksink_new=0d0; idsink_new=0; new_born_new=.false.
+#ifdef INDIVIDUAL_SINK_STARS
+  sink_metallicity_new=0.d0
+#endif
 
   ! Count number of new sinks (flagged cells)
   ntot=0
@@ -1512,6 +1975,12 @@ subroutine make_sink_from_clump(ilevel)
               delta_mass_new(index_sink)=msmbh_new(index_sink)
               dmfsink_new(index_sink)=delta_d*vol_loc
 
+#ifdef INDIVIDUAL_SINK_STARS
+              do im=1,NMETALS
+                 sink_metallicity_new(index_sink,im) = msink_new(index_sink) * z(imetal+im-1)
+              end do
+#endif
+
               ! Global index of the new sink
               oksink_new(index_sink)=1d0
               idsink_new(index_sink)=index_sink_tot
@@ -1565,6 +2034,9 @@ subroutine make_sink_from_clump(ilevel)
   call MPI_ALLREDUCE(idsink_new,idsink_all,nsinkmax,MPI_INTEGER         ,MPI_SUM,MPI_COMM_WORLD,info)
   call MPI_ALLREDUCE(tsink_new ,tsink_all ,nsinkmax,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
   call MPI_ALLREDUCE(new_born_new,new_born_all,nsinkmax,MPI_LOGICAL,MPI_LOR,MPI_COMM_WORLD,info)
+#ifdef INDIVIDUAL_SINK_STARS
+  call MPI_ALLREDUCE(sink_metallicity_new ,sink_metallicity_all ,nsinkmax*NMETALS,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,info)
+#endif
 #else
   msink_all=msink_new
   msmbh_all=msmbh_new
@@ -1577,6 +2049,9 @@ subroutine make_sink_from_clump(ilevel)
   idsink_all=idsink_new
   tsink_all=tsink_new
   new_born_all=new_born_new
+#ifdef INDIVIDUAL_SINK_STARS
+  sink_metallicity_all = sink_metallicity_new
+#endif
 #endif
   do isink=1,nsink
      if(oksink_all(isink)==1)then
@@ -1594,6 +2069,26 @@ subroutine make_sink_from_clump(ilevel)
         fsink_partial(isink,1:ndim,levelmin:nlevelmax)=0.0
         vsold(isink,1:ndim,ilevel)=vsink_all(isink,1:ndim)
         vsnew(isink,1:ndim,ilevel)=vsink_all(isink,1:ndim)
+#ifdef INDIVIDUAL_SINK_STARS        
+        ! Get the metallicity of the sink
+        sink_metallicity(isink,:) = sink_metallicity_all(isink,:)
+        star_met = 12.d0 + LOG10((sink_metallicity(isink,5)+1.d-40)/(sink_metallicity(isink,1) * 15.9994d0))
+
+        ! Use the metallicity to draw a final mass from the IMF
+        if (star_met.lt.z_crit_pop3) then ! Pop III case
+           msink_actual(isink) = sample_IMF_pop3(isink) * M_sun / (scale_d*scale_l**ndim)
+        else ! Pop II case
+           ! If we return a negative number, than we set the sink mass to the group mass and the particle is degenerate
+           msink_actual(isink) = sample_IMF_pop2(imf_m0,imf_m1,imf_m2,imf_a1,imf_a2,group_mass,lp_mass,isink) * M_sun / (scale_d*scale_l**ndim)
+           if (msink_actual(isink).lt.0.d0) then
+              ! Flag the particles as degenerate
+              evolution_flag(isink) = -1
+              ! Set the sink mass to the lp_mass
+              msink_actual(isink) = lp_mass * M_sun / (scale_d*scale_l**ndim)
+           end if
+
+        end if
+#endif
      endif
   end do
 #endif
@@ -1777,7 +2272,11 @@ subroutine update_sink(ilevel)
   ! Mesh spacing in that level
   nx_loc=(icoarse_max-icoarse_min+1)
   scale=boxlen/dble(nx_loc)
-  dx_min=scale*0.5D0**nlevelmax_sink/aexp
+!   dx_min=scale*0.5D0**nlevelmax_sink/aexp
+  dx_min=scale*0.5D0**nlevelmax_sink
+  if (sink_constant_phys_radius) then 
+     dx_min=dx_min/aexp
+  end if
   rmax=dble(ir_cloud)*dx_min ! Linking length in physical units
   rmax2=rmax*rmax
 
@@ -1792,6 +2291,9 @@ subroutine update_sink(ilevel)
   ! Set overlap mass to sink mass
   msum_overlap=msink
 
+  ! In the case where sinks represent individual stars
+  ! we do not merge them
+#ifndef INDIVIDUAL_SINK_STARS
   ! Check for overlapping sinks
   do isink=1,nsink-1
      if (msink(isink)>0.)then
@@ -1892,6 +2394,7 @@ subroutine update_sink(ilevel)
         end do
      end if
   end do
+#endif
 
   ! Store old xsink and fsink for the gradient descent timestep
   xsinkold=0.0
@@ -2265,7 +2768,11 @@ subroutine f_gas_sink(ilevel)
   scale=boxlen/dble(nx_loc)
   dx_loc=dx*scale
   vol_loc=dx_loc**ndim
-  dx_min=scale*0.5D0**nlevelmax_sink/aexp
+!   dx_min=scale*0.5D0**nlevelmax_sink/aexp
+  dx_min=scale*0.5D0**nlevelmax_sink
+  if (sink_constant_phys_radius) then 
+     dx_min=dx_min/aexp
+  end if
   ssoft=sink_soft*dx_min
 
   ! Set position of cell centers relative to grid centre
@@ -2504,7 +3011,9 @@ subroutine read_sink_params()
        clump_core,verbose_AGN,T2_AGN,T2_min,cone_opening,mass_halo_AGN,mass_clump_AGN,mass_star_AGN,&
        AGN_fbk_frac_ener,AGN_fbk_frac_mom,T2_max,v_max,boost_threshold_density,&
        epsilon_kin,AGN_fbk_mode_switch_threshold,kin_mass_loading,bondi_use_vrel,smbh,agn,max_mass_nsc,&
-       agn_acc_method,agn_inj_method,sink_descent,gamma_grad_descent,fudge_graddescent
+       agn_acc_method,agn_inj_method,sink_descent,gamma_grad_descent,fudge_graddescent, &
+       sink_constant_phys_radius,p3_mchar,z_crit_pop3,uniform_rand_seed, &
+       use_bondi_correction
   real(dp)::scale_nH,scale_T2,scale_l,scale_d,scale_t,scale_v
 
   if(.not.cosmo) call units(scale_l,scale_t,scale_d,scale_v,scale_nH,scale_T2)
@@ -2556,6 +3065,7 @@ subroutine read_sink_params()
   ! Check for accretion scheme
   if (accretion_scheme=='bondi')bondi_accretion=.true.
   if (accretion_scheme=='threshold')threshold_accretion=.true.
+  if (accretion_scheme=='flux')flux_accretion=.true.
 
   ! For sink formation and accretion a threshold must be given
   if (create_sinks .or. (accretion_scheme .ne. 'none'))then

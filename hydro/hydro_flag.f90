@@ -133,6 +133,10 @@ subroutine hydro_flag(ilevel)
            call jeans_length_refine(ind_cell,ok,ngrid,ilevel)
         endif
 
+        if(strom_refine(ilevel)>0.0)then
+           call stromgren_radius_refine(ind_cell,ok,ngrid,ilevel)
+        endif
+
         ! Apply geometry-based refinement criteria
         if(r_refine(ilevel)>-1.0)then
            ! Compute cell center in code units
@@ -240,3 +244,127 @@ subroutine jeans_length_refine(ind_cell,ok,ncell,ilevel)
   end do
 
 end subroutine jeans_length_refine
+!#####################################################################
+!#####################################################################
+!#####################################################################
+!#####################################################################
+subroutine stromgren_radius_refine(ind_cell,ok,ncell,ilevel)
+  use amr_commons
+  use pm_commons
+  use hydro_commons
+  use poisson_commons
+  use constants, only: pi
+  implicit none
+  integer::ncell,ilevel
+  integer,dimension(1:nvector)::ind_cell
+  logical,dimension(1:nvector)::ok
+  !-------------------------------------------------
+  ! This routine sets flag1 to 1 if the stromgren
+  ! radius is not resolved by enough cells
+  !-------------------------------------------------
+  integer::i,indi
+  real(dp)::n_strom
+  real(dp)::tail_pix
+  real(dp)::dens,tempe,etherm,ekk
+  real(dp)::lam_HI,alpha,r_s,Q
+  real(dp)::scale_l,scale_t,scale_d,scale_v,scale_nH,scale_T2
+#if NENER>0
+  integer::irad
+  real(dp)::err
+#endif
+#ifdef SOLVERmhd
+  real(dp)::emag
+#endif
+
+  ! Get the unit conversions
+  call units(scale_l,scale_t,scale_d,scale_v,scale_nH,scale_T2)
+
+  ! Number of cells to resolve the stromgren radius by
+  n_strom = strom_refine(ilevel)
+
+  ! Ionizing emissivity [phot/s]
+  ! Note we choose a fiducial value of 10^49 photons/s 
+  ! Corresponding to a single massive O star
+  Q = 1d49
+
+  ! Compute the size of the cell at the current level
+  tail_pix = boxlen / (2d0**ilevel)
+
+  ! Loop over cells
+  do i=1,ncell
+     indi = ind_cell(i)
+
+     ! Calculate the density in H/cc
+     dens = max(uold(indi,1),smallr) * scale_nH
+
+!      ! Calculate the temperature
+!      etherm = uold(indi,neul)
+!      etherm = etherm - 0.5d0*uold(indi,2)**2/dens
+! #if NDIM > 1 || SOLVERmhd
+!      etherm = etherm - 0.5d0*uold(indi,3)**2/dens
+! #endif
+! #if NDIM > 2 || SOLVERmhd
+!      etherm = etherm - 0.5d0*uold(indi,4)**2/dens
+! #endif
+! #ifdef SOLVERmhd
+!      ! the magnetic energy
+!      emag =        (uold(indi,6)+uold(indi,nvar+1))**2
+!      emag = emag + (uold(indi,7)+uold(indi,nvar+2))**2
+!      emag = emag + (uold(indi,8)+uold(indi,nvar+3))**2
+!      emag = emag / 8d0
+!      etherm = (etherm - emag)
+! #endif
+! #if NENER>0
+!      do irad=1,nener
+!         etherm=etherm-uold(indi,nhydro+irad)
+!      end do
+! #endif
+!      ! the temperature
+!      tempe =  etherm / dens * (gamma - 1.0d0)  
+
+!      ! prevent numerical crash due to negative temperature
+!      tempe = max(tempe,smallc**2) * scale_T2
+
+     ! Compute thermal pressure
+     tempe = uold(indi,neul)
+
+     ekk=0.0d0
+     do idim=2,neul-1
+        ekk = ekk + 0.5d0*uold(indi,idim)**2 / MAX(uold(indi,1),smallr)
+     end do
+
+     err = 0.0d0
+#if NENER>0
+     do irad=0,nener-1
+        err = err + uold(indi,inener+irad)
+     end do
+#endif
+
+     emag = 0.0d0
+#ifdef SOLVERmhd
+     do idim=1,3
+        emag = emag + 0.125d0*(uold(indi,idim+neul)+uold(indi,idim+nvar))**2
+     end do
+#endif
+
+     tempe = (gamma-1.0d0) * (tempe - ekk - err - emag)
+
+     ! Compute T2=T/mu in Kelvin
+     tempe = tempe / MAX(uold(indi,1),smallr) * scale_T2
+
+     ! Compute the recomination time in s
+     lam_HI = 315614d0 / tempe
+     alpha = 2.753d-14 * (lam_HI**1.5d0) / ((1.d0 + (lam_HI/2.74d0)**0.407d0)**2.242d0)
+
+     ! Stromgren radius in cm
+     r_s = ((3.d0 * Q / (4.d0 * pi * dens * dens * alpha))**(1.d0/3.d0))
+     ! Convert to box units
+     r_s = r_s / scale_l
+
+     ! the Stromgren radius must be larger
+     ! than n_strom times the size of the pixel
+     ok(i) = ok(i) .or. ( n_strom*tail_pix >= r_s )
+
+  end do ! End loop over cells
+
+end subroutine stromgren_radius_refine

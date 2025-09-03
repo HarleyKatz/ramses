@@ -7,8 +7,10 @@ module amr_parameters
 #else
 #if NPRE==4
   integer,parameter::dp=kind(1.0E0) ! real*4
+  real(KIND=4),parameter::huge_num=HUGE(1.0E0)
 #else
   integer,parameter::dp=kind(1.0D0) ! real*8
+  real(KIND=8),parameter::huge_num=HUGE(1.0d0)
 #endif
 #endif
 #ifdef QUADHILBERT
@@ -81,6 +83,7 @@ module amr_parameters
   integer::nx=1,ny=1,nz=1                  ! Number of coarse cells in each dimension
   integer::levelmin=1                      ! Full refinement up to levelmin
   integer::nlevelmax=1                     ! Maximum number of level
+  integer::levelmax_current=1              ! Current allowed levelmax --> changed to keep fixed physical resolution
   integer::ngridmax=0                      ! Maximum number of grids
   integer,dimension(1:MAXLEVEL)::nexpand=1 ! Number of mesh expansion
   integer::nexpand_bound=1                 ! Number of mesh expansion for virtual boundaries
@@ -113,12 +116,12 @@ module amr_parameters
   real(dp)::walltime_hrs=-1      ! Wallclock time for submitted job
   real(dp)::minutes_dump=1       ! Dump an output minutes before walltime ends
   logical(dp)::finish_run=.false.! trigger cleanup after walltime end dump
-  real(dp)::delta_tout=HUGE(1.0D0)         ! time difference between outputs
-  real(dp)::delta_aout=HUGE(1.0D0)         ! expansion factor difference between outputs
-  real(dp),dimension(1:MAXOUT)::aout=HUGE(1.0D0)      ! Output expansion factors
-  real(dp),dimension(1:MAXOUT)::tout=HUGE(1.0D0)      ! Output times
-  real(dp)::tout_next=HUGE(1.0D0)     ! next output time using delta_tout
-  real(dp)::aout_next=HUGE(1.0D0)     ! next output expansion factor using delta_aout
+  real(dp)::delta_tout=huge_num         ! time difference between outputs
+  real(dp)::delta_aout=huge_num         ! expansion factor difference between outputs
+  real(dp),dimension(1:MAXOUT)::aout=huge_num      ! Output expansion factors
+  real(dp),dimension(1:MAXOUT)::tout=huge_num      ! Output times
+  real(dp)::tout_next=huge_num     ! next output time using delta_tout
+  real(dp)::aout_next=huge_num     ! next output expansion factor using delta_aout
 
   ! Lightcone parameters
   real(dp)::thetay_cone=12.5d0
@@ -158,7 +161,7 @@ module amr_parameters
   real(dp)::B_ave  =0                ! Average magnetic field
   real(dp)::z_reion=8.5d0            ! Reionization redshift
   real(dp)::T2_start                 ! Starting gas temperature
-  real(dp)::T2max=huge(1._dp)        ! Temperature ceiling for cooling_fine
+  real(dp)::T2max=huge_num           ! Temperature ceiling for cooling_fine
   real(dp)::t_delay=1.0d1            ! Feedback time delay in Myr
   real(dp)::t_diss =20               ! Dissipation timescale for feedback
   real(dp)::t_sne =10                ! Supernova blast time
@@ -222,8 +225,8 @@ module amr_parameters
                                         !'double_polytrope': isothermal with T0 below rho0 and polytropic with gamma above
                                         !'custom': for patching your own eos
                                         !'legacy': same as polytrop but using the old n_star, g_star and T2_star
-  real(dp)::polytrope_rho=1.0d50        ! sets rho0 in EOS = density normalisation or knee-density, in g/cm3
-  real(dp)::polytrope_rho_cu=1.0d50     ! rho0 in code units
+  real(dp)::polytrope_rho=1.d50      ! sets rho0 in EOS = density normalisation or knee-density, in g/cm3
+  real(dp)::polytrope_rho_cu=1.d50   ! rho0 in code units
   real(dp)::polytrope_index=1.0d0       ! sets gamma in EOS = polytropic index
   real(dp)::T_eos=10                    ! sets T0 in EOS: isothermal temperature or temperature normalisation, in K
   real(dp)::mu_gas=1d0                  ! molecular weight
@@ -273,8 +276,15 @@ module amr_parameters
   integer::i_mv_vx=-1,    i_mv_vy=-1,         i_mv_vz=-1
   integer::i_mv_dm=-1,    i_mv_stars=-1,      i_mv_lum=-1
   integer::i_mv_var=-1,   i_mv_xh2=-1,        i_mv_xhi=-1
-  integer:: i_mv_xhii=-1, i_mv_xheii=-1,      i_mv_xheiii=-1
+  integer::i_mv_xhii=-1,  i_mv_xheii=-1,      i_mv_xheiii=-1
   integer::i_mv_fp=-1,    i_mv_pmag=-1
+#ifdef RTZ
+  integer::i_mv_ha=-1,      i_mv_hb=-1,      i_mv_o3_5007=-1
+  integer::i_mv_o3_4959=-1, i_mv_o3_4363=-1, i_mv_o2_3728=-1
+  integer::i_mv_o2_3726=-1, i_mv_n2_6583=-1
+  real(dp)::init_xe=0.d0
+  real(dp)::init_T=200.d0
+#endif
   integer,dimension(1:50)::movie_vars=-1
   integer,dimension(1:50)::movie_var_number=1
 

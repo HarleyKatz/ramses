@@ -10,6 +10,10 @@ subroutine output_frame()
   use rt_parameters
   use rt_hydro_commons
 #endif
+#ifdef RTZ
+  use rtz_module
+  use movie_lines_module
+#endif
   use constants, only: pi, c_cgs, L_sun, M_sun, yr2sec
   use mpi_mod
   use file_module, ONLY: mkdir
@@ -91,6 +95,14 @@ subroutine output_frame()
   real(dp),dimension(8)::xcube,ycube,zcube
   integer::icube,iline
   real(dp)::minx=0,maxx=0,miny=0,maxy=0,minz=0,maxz=0,d1,d2,d3,d4,l1,l2,l3,l4
+#endif
+
+#ifdef RTZ
+  real(dp),dimension(1:n_elements, 1:n_elements):: xion
+  real(dp), dimension(n_elements):: nElement
+  real(dp):: electron_density, temperature, mu
+  real(dp):: m_bar, n_hat, vol
+  integer:: counter, e_counter, iii, jjj
 #endif
 
  nh_temp = nh_frame
@@ -773,6 +785,114 @@ subroutine output_frame()
                                      endif
                                   endif ! if(rt)
 #endif
+#ifdef RTZ
+
+                                  ! First we need to grab all of the elements and ionization fractions
+                                  ! We need to compute the electron density and temperature
+                                  counter = 0
+                                  e_counter = 0
+                                  electron_density = 0.d0
+                                  m_bar = 0.d0
+                                  n_hat = 0.d0
+                                  do iii=1,n_elements ! loop over elements
+                                     if (elements(iii)%atomic_number.gt.0) then
+                                        do jjj=1,elements(iii)%n_ions ! loop over ions
+
+                                           if (jjj.eq.1) then
+                                              ! This gives us a number density [Atoms/cm^3]
+                                              nElement(iii) = uold(ind_cell(i),imetal+e_counter) * scale_nH / elements(iii)%atomic_mass
+                                           end if
+
+                                           ! Store the ion fraction
+                                           xion(iii,jjj) = uold(ind_cell(i),iIons+counter)/uold(ind_cell(i),1)
+
+                                           ! Update the electron density
+                                           electron_density = electron_density + (nElement(iii) * real(jjj-1,kind=dp) * xion(iii,jjj))
+                                           
+                                           ! Update mu
+                                           m_bar = m_bar + (nElement(iii) * xion(iii,jjj) * elements(iii)%atomic_mass)
+                                           n_hat = n_hat + nElement(iii) * xion(iii,jjj)
+
+                                           ! Increment ionization counter
+                                           counter = counter + 1 
+
+                                        end do ! end loop over ions
+                                        e_counter = e_counter + 1 ! increment element counter
+                                     end if
+                                  end do ! end loop over elements
+
+                                  ! Include electrons in calculating mu
+                                  n_hat = n_hat + electron_density
+
+                                  ! deal with molecules separately
+                                  if (elements(1)%atomic_number.gt.0 .and. isH2_rtz) then
+                                     xion(1,3) = uold(ind_cell(i),iIons+counter)/uold(ind_cell(i),1)
+                                     m_bar = m_bar + (nElement(1) * xion(1,3) * elements(1)%atomic_mass)
+                                     n_hat = n_hat + (0.5d0 * nElement(1) * xion(1,3))
+                                     counter = counter + 1
+                                  endif
+
+                                  ! Finalize mu
+                                  mu = m_bar / n_hat
+
+                                  ! Calculate volume
+                                  vol = (dx_loc*scale_l)**3.d0
+
+                                  ! Next we need to get the temperature
+                                  e = 0.0d0
+#ifdef SOLVERmhd
+                                  do idim=1,3
+#else
+                                  do idim=1,ndim
+#endif
+                                     e = e+0.5*uold(ind_cell(i),idim+1)**2/max(uold(ind_cell(i),1),smallr)
+                                  enddo
+#if NENER>0
+                                  do irad=0,nener-1
+                                     e = e+uold(ind_cell(i),inener+irad)
+                                  enddo
+#endif
+#ifdef SOLVERmhd
+                                  do idim=1,3
+                                     e = e+0.125d0*(uold(ind_cell(i),idim+neul)+uold(ind_cell(i),idim+nvar))**2
+                                  enddo
+#endif
+                                  ! This is now T/mu
+                                  temperature = (gamma-1.0)*(uold(ind_cell(i),neul)-e)
+                                  temperature = temperature/uold(ind_cell(i),1)*scale_T2
+                                  ! Convert to T
+                                  temperature = temperature * mu
+
+                                  if(movie_vars(kk).eq.i_mv_ha)then
+                                     ok_frame=.true.
+                                     uvar = get_halpha_lum( temperature, electron_density, &
+                                                          & xion(1,2) * nElement(1), xion(1,1) * nElement(1), &
+                                                          & vol)
+                                  else if(movie_vars(kk).eq.i_mv_hb)then
+                                     ok_frame=.true.
+                                     uvar = get_hbeta_lum( temperature, electron_density, &
+                                                          & xion(1,2) * nElement(1), xion(1,1) * nElement(1), &
+                                                          & vol)
+                                  else if(movie_vars(kk).eq.i_mv_o3_5007)then
+                                     uvar = get_OIII_5007_lum( temperature, electron_density, &
+                                                             & xion(8,3) * nElement(8), vol)
+                                  else if(movie_vars(kk).eq.i_mv_o3_4959)then
+                                     uvar = get_OIII_4959_lum( temperature, electron_density, &
+                                                             & xion(8,3) * nElement(8), vol)
+                                  else if(movie_vars(kk).eq.i_mv_o3_4363)then
+                                     uvar = get_OIII_4363_lum( temperature, electron_density, &
+                                                             & xion(8,3) * nElement(8), vol)
+                                  else if(movie_vars(kk).eq.i_mv_o2_3726)then
+                                     uvar = get_OII_3726_lum( temperature, electron_density, &
+                                                             & xion(8,2) * nElement(8), vol)
+                                  else if(movie_vars(kk).eq.i_mv_o2_3728)then
+                                     uvar = get_OII_3728_lum( temperature, electron_density, &
+                                                             & xion(8,2) * nElement(8), vol)
+                                  else if(movie_vars(kk).eq.i_mv_n2_6583)then
+                                     uvar = get_NII_6583_lum( temperature, electron_density, &
+                                                             & xion(7,2) * nElement(7), vol)
+                                  endif
+#endif
                                   ! Frame update
                                   if(ok_frame) then
                                      if(is_min)then
@@ -1126,6 +1246,7 @@ subroutine set_movie_vars()
         if(i_mv_xhi .eq. -1) i_mv_xhi = kk
         movie_vars(kk) = i_mv_xhi
 
+#ifndef RTZ
      else if (movie_vars_txt(kk) .eq. 'xHII') then
         if(i_mv_xhii .eq. -1) i_mv_xhii = kk
         movie_vars(kk) = i_mv_xhii
@@ -1137,6 +1258,7 @@ subroutine set_movie_vars()
      else if (movie_vars_txt(kk) .eq. 'xHeIII') then
         if(i_mv_xheiii .eq. -1) i_mv_xheiii = kk
         movie_vars(kk) = i_mv_xheiii
+#endif
 
      else if (index(movie_vars_txt(kk), 'var') .eq. 1) then
         if(i_mv_var .eq. -1) i_mv_var = kk
@@ -1151,6 +1273,40 @@ subroutine set_movie_vars()
         ! Find which photon group to show
         read( movie_vars_txt(kk)(3:4), '(i1)' ) ivar
         movie_var_number(kk) = ivar
+
+#ifdef RTZ
+     else if (movie_vars_txt(kk) .eq. 'Ha') then
+        if(i_mv_ha .eq. -1) i_mv_ha = kk
+        movie_vars(kk) = i_mv_ha
+
+     else if (movie_vars_txt(kk) .eq. 'Hb') then
+        if(i_mv_hb .eq. -1) i_mv_hb = kk
+        movie_vars(kk) = i_mv_hb
+
+     else if (movie_vars_txt(kk) .eq. 'O3_5007') then
+        if(i_mv_o3_5007 .eq. -1) i_mv_o3_5007 = kk
+        movie_vars(kk) = i_mv_o3_5007
+
+     else if (movie_vars_txt(kk) .eq. 'O3_4959') then
+        if(i_mv_o3_4959 .eq. -1) i_mv_o3_4959 = kk
+        movie_vars(kk) = i_mv_o3_4959
+
+     else if (movie_vars_txt(kk) .eq. 'O3_4363') then
+        if(i_mv_o3_4363 .eq. -1) i_mv_o3_4363 = kk
+        movie_vars(kk) = i_mv_o3_4363
+
+     else if (movie_vars_txt(kk) .eq. 'O2_3726') then
+        if(i_mv_o2_3726 .eq. -1) i_mv_o2_3726 = kk
+        movie_vars(kk) = i_mv_o2_3726
+
+     else if (movie_vars_txt(kk) .eq. 'O2_3728') then
+        if(i_mv_o2_3728 .eq. -1) i_mv_o2_3728 = kk
+        movie_vars(kk) = i_mv_o2_3728
+
+     else if (movie_vars_txt(kk) .eq. 'N2_6583') then
+        if(i_mv_n2_6583 .eq. -1) i_mv_n2_6583 = kk
+        movie_vars(kk) = i_mv_n2_6583
+#endif
 
      endif
 

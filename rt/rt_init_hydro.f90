@@ -131,7 +131,7 @@ subroutine rt_init_hydro
                  read(ilun)xx
                  do i=1,ncache
                     rtuold(ind_grid(i)+iskip,iGroups(ivar))              &
-                                                      = xx(i)/rt_c(ilevel)
+                                                      = xx(i)/rt_c(MAX(ilevel,levelmin))
                  end do
                  ! Read photon flux
                  do idim=1,ndim

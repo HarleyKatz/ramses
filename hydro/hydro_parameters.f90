@@ -21,6 +21,12 @@ module hydro_parameters
 #else
   integer,parameter::nener=NENER
 #endif
+  ! metals
+#if NMETALS > 0
+  integer,parameter::nmetals=NMETALS          
+#else
+   integer,parameter::nmetals=0 
+#endif
   ! total amount of variables
 #ifndef NVAR
   integer,parameter::nvar=nhydro+nener
@@ -73,6 +79,7 @@ module hydro_parameters
   real(dp),dimension(1:NVAR-NHYDRO-NENER)::err_grad_var=-1
 #endif
   real(dp),dimension(1:MAXLEVEL)::jeans_refine=-1
+  real(dp),dimension(1:MAXLEVEL)::strom_refine=-1
 
   ! Initial conditions hydro variables
   real(dp),dimension(1:MAXREGION)::d_region=0
@@ -105,6 +112,7 @@ module hydro_parameters
 
   ! Passive variables index
   integer::imetal=nhydro+1
+  integer::iCO=nhydro+1
   integer::idelay=nhydro+1
   integer::ixion=nhydro+1
   integer::ichem=nhydro+1

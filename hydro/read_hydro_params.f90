@@ -1,6 +1,9 @@
 subroutine read_hydro_params(nml_ok)
   use amr_commons
   use hydro_commons
+#ifdef RTZ
+  use rtz_module
+#endif
   use mpi_mod
   implicit none
   logical::nml_ok
@@ -13,6 +16,9 @@ subroutine read_hydro_params(nml_ok)
   logical :: dummy
 #ifdef SOLVERmhd
   real(dp)::em_bound
+#endif
+#ifdef RTZ
+  integer :: counter
 #endif
 
   !--------------------------------------------------
@@ -32,6 +38,9 @@ subroutine read_hydro_params(nml_ok)
 #endif
 #if NENER>0
        & ,prad_region &
+#endif
+#ifdef RTZ
+       & ,init_xe,init_T &
 #endif
        & ,omega_b,alpha_dense_core,beta_dense_core,crit_dense_core,delta_rho
 
@@ -58,7 +67,7 @@ subroutine read_hydro_params(nml_ok)
        & ,err_grad_A,err_grad_B,err_grad_C,err_grad_B2 &
        & ,floor_A,floor_B,floor_C,floor_B2,interpol_mag_type &
 #endif
-       & ,interpol_var,interpol_type,sink_refine
+       & ,interpol_var,interpol_type,sink_refine,strom_refine
 
   ! Boundary parameters
   namelist/boundary_params/nboundary,bound_type &
@@ -456,13 +465,36 @@ subroutine read_hydro_params(nml_ok)
      jeans_refine(i)=-1
   end do
 
+  do i=nlevelmax,levelmin,-1
+     strom_refine(i)=strom_refine(i-levelmin+1)
+  end do
+  do i=1,levelmin-1
+     strom_refine(i)=-1
+  end do
   !-----------------------------------
   ! Sort out passive variable indices
   !-----------------------------------
   inener=nhydro+1
   imetal=inener+nener
   idelay=imetal
+#if NMETALS > 1
+  idelay=imetal+nmetals
+#ifdef RTZ
+  counter = 0
+  do i=1,n_elements
+     if (elements(i)%atomic_number.gt.0) then
+        elements(i)%u_hydro_idx = imetal + counter
+        counter = counter + 1
+     end if
+  end do
+#endif
+#else
   if(metal)idelay=imetal+1
+#endif
+  iCO = idelay
+#ifdef CO
+  idelay = idelay + 1
+#endif
   ivirial1=idelay
   ivirial2=idelay
   if(delayed_cooling)then

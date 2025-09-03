@@ -10,7 +10,7 @@ subroutine flag_formation_sites
   use hydro_commons, only:uold
   use hydro_parameters, only:smallr
   use pm_parameters, only:mass_halo_AGN,mass_clump_AGN,nlevelmax_sink
-  use constants, only: pi, twopi, M_sun
+  use constants, only: pi, twopi, M_sun, mH
   use mpi_mod
   implicit none
 #ifndef WITHOUTMPI
@@ -79,6 +79,12 @@ subroutine flag_formation_sites
 
   ! Block clumps whose centres are closer than twice R_accretion from existing sinks
   do j=1,nsink
+#ifdef INDIVIDUAL_SINK_STARS
+     ! Only block if sinks are actively accreting
+     if (evolution_flag(j).ne.1) then
+        cycle
+     end if
+#endif
      do i=1,npeaks
         rrel=xsink(j,1:ndim)-peak_pos(i,1:ndim)
         do idim=1,ndim
@@ -86,9 +92,16 @@ subroutine flag_formation_sites
            if (period(idim) .and. rrel(idim)<boxlen*(-0.5))rrel(idim)=rrel(idim)+boxlen
         end do
         dist2=sum(rrel**2)
-        if (dist2<(2.*ir_cloud*dx_min/aexp)**2)then
-           occupied(i)=1
-           if(verbose)write(*,*)'CPU # ',myid,'blocked clump # ',i+ipeak_start(myid),' for sink production because of sink # ',idsink(j)
+        if (sink_constant_phys_radius) then 
+           if (dist2<(2.*ir_cloud*dx_min/aexp)**2)then
+              occupied(i)=1
+              if(verbose)write(*,*)'CPU # ',myid,'blocked clump # ',i+ipeak_start(myid),' for sink production because of sink # ',idsink(j)
+           end if
+        else
+           if (dist2<(2.*ir_cloud*dx_min)**2)then
+              occupied(i)=1
+              if(verbose)write(*,*)'CPU # ',myid,'blocked clump # ',i+ipeak_start(myid),' for sink production because of sink # ',idsink(j)
+           end if
         end if
      end do
   end do
@@ -150,7 +163,11 @@ subroutine flag_formation_sites
         ! 4-cell ball mass has to be larger than some threshold
         ok=ok.and.clump_mass4(jj)>mass_clump_AGN*M_sun/(scale_d*scale_l**3)
         ! 4-cell ball av. density has to be larger that SF threshold
-        ok=ok.and.clump_mass4(jj)/(4d0/3d0*pi*(ir_cloud*dx_min/aexp)**3)>n_star/scale_nH
+        if (sink_constant_phys_radius) then 
+           ok=ok.and.clump_mass4(jj)/(4d0/3d0*pi*(ir_cloud*dx_min/aexp)**3)>n_star/scale_nH
+        else
+           ok=ok.and.clump_mass4(jj)/(4d0/3d0*pi*(ir_cloud*dx_min)**3)>n_star/scale_nH
+        end if
         ! Peak density has to be larger than 10x star formation thresold
         ok=ok.and.max_dens(jj)>10.0d0*n_star/scale_nH
         !ok=ok.and.max_dens(jj)>n_star/scale_nH
@@ -177,10 +194,13 @@ subroutine flag_formation_sites
         ok=ok.and.relevance(jj)>0
         ! Clump has to contain at least one cell
         ok=ok.and.n_cells(jj)>0
-        ! Clmup must have no existing sink
+        ! Clmup must have no existing (accreting) sink
         ok=ok.and.occupied(jj)==0
         ! Peak has to be dense enough
         ok=ok.and.max_dens(jj)>d_sink
+#ifdef INDIVIDUAL_SINK_STARS
+        ok=ok.and.max_dens(jj)>n_sink * mH / scale_d
+#endif
         ! Clump has to be massive enough
         ok=ok.and.clump_mass4(jj)>mass_sink_seed*M_sun/(scale_d*scale_l**3)
 !!$        ! Clump has to be contracting
@@ -294,9 +314,13 @@ subroutine compute_clump_properties_round2
   use pm_commons, ONLY:cont_speed
   use pm_parameters
 #ifdef RT
-  use rt_parameters, only: nGroups,iGroups,group_egy
   use rt_hydro_commons, only:rtuold
+#ifdef RTZ
+  use rt_parameters, only: nGroups,iGroups,group_egy,kappaSc
+#else
+  use rt_parameters, only: nGroups,iGroups,group_egy
   use rt_cooling_module, only:kappaSc
+#endif
   use constants, only: pi, c_cgs, ev2erg
 #endif
 
@@ -497,16 +521,29 @@ subroutine compute_clump_properties_round2
         end do
 
         ! Properties for regions close to peak (4 cells away)
-        if (((xpeak(1)-xcell(1))**2.+(xpeak(2)-xcell(2))**2.+(xpeak(3)-xcell(3))**2.) .LE. 16.*volume(nlevelmax_sink)**(2./3.)/aexp**2)then
-           clump_mass4(peak_nr)=clump_mass4(peak_nr)+d*vol
-        endif
-
-        ! Properties for regions close to peak (4 cells away)
-        if(mass_star_AGN>0)then
+        if (sink_constant_phys_radius) then 
            if (((xpeak(1)-xcell(1))**2.+(xpeak(2)-xcell(2))**2.+(xpeak(3)-xcell(3))**2.) .LE. 16.*volume(nlevelmax_sink)**(2./3.)/aexp**2)then
-              clump_star4(peak_nr)=clump_star4(peak_nr)+rho_star*vol
+              clump_mass4(peak_nr)=clump_mass4(peak_nr)+d*vol
            endif
-        endif
+
+           ! Properties for regions close to peak (4 cells away)
+           if(mass_star_AGN>0)then
+              if (((xpeak(1)-xcell(1))**2.+(xpeak(2)-xcell(2))**2.+(xpeak(3)-xcell(3))**2.) .LE. 16.*volume(nlevelmax_sink)**(2./3.)/aexp**2)then
+                 clump_star4(peak_nr)=clump_star4(peak_nr)+rho_star*vol
+              endif
+           endif
+        else
+           if (((xpeak(1)-xcell(1))**2.+(xpeak(2)-xcell(2))**2.+(xpeak(3)-xcell(3))**2.) .LE. 16.*volume(nlevelmax_sink)**(2./3.))then
+              clump_mass4(peak_nr)=clump_mass4(peak_nr)+d*vol
+           endif
+
+           ! Properties for regions close to peak (4 cells away)
+           if(mass_star_AGN>0)then
+              if (((xpeak(1)-xcell(1))**2.+(xpeak(2)-xcell(2))**2.+(xpeak(3)-xcell(3))**2.) .LE. 16.*volume(nlevelmax_sink)**(2./3.))then
+                 clump_star4(peak_nr)=clump_star4(peak_nr)+rho_star*vol
+              endif
+           endif
+        end if
 
         ! Cell gravitational acceleration
         fgrav(1:3)=f(icellp(ipart),1:3)
@@ -608,7 +645,7 @@ subroutine trim_clumps
 #if NDIM==3
   use amr_commons
   use clfind_commons
-  use pm_parameters, only:nlevelmax_sink
+  use pm_parameters, only:nlevelmax_sink, sink_constant_phys_radius
   use pm_commons, only:ir_cloud
   implicit none
 
@@ -643,7 +680,12 @@ subroutine trim_clumps
   skip_loc(2)=dble(jcoarse_min)
   skip_loc(3)=dble(kcoarse_min)
   scale=boxlen/dble(nx_loc)
-  dx_loc=dx*scale/aexp
+!   dx_loc=dx*scale/aexp
+  dx_loc=dx*scale
+  if (sink_constant_phys_radius) then 
+     dx_loc=dx_loc/aexp
+  end if
+
 
   do ind=1,twotondim
      iz=(ind-1)/4

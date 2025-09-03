@@ -9,6 +9,9 @@ module pm_commons
   ! Sink particle related arrays
   real(dp),allocatable,dimension(:)    ::msink,xmsink
   real(dp),allocatable,dimension(:)    ::msink_new,msink_all
+#ifdef INDIVIDUAL_SINK_STARS
+  real(dp),allocatable,dimension(:,:)  ::sink_metallicity_new,sink_metallicity_all
+#endif
   real(dp),allocatable,dimension(:)    ::msmbh,msmbh_new,msmbh_all
   real(dp),allocatable,dimension(:)    ::dmfsink,dmfsink_new,dmfsink_all !count mass in sink since last stellar object creation
   real(dp),allocatable,dimension(:)    ::oksink_new,oksink_all
@@ -41,6 +44,12 @@ module pm_commons
   integer::nindsink=0
   integer::sinkint_level=0         ! maximum level currently active is where the global sink variables are updated
   real(dp)::ssoft                  ! sink softening lenght in code units
+#ifdef INDIVIDUAL_SINK_STARS
+  real(dp),allocatable,dimension(:)    ::msink_actual
+  real(dp),allocatable,dimension(:,:)  ::sink_metallicity
+  integer,allocatable,dimension(:)     ::evolution_flag ! 1: pre main-sequence, 0: main-sequence
+  real(dp),allocatable,dimension(:)    ::main_sequence_time
+#endif
 
   ! Particles related arrays
   real(dp),allocatable,dimension(:,:)  ::xp       ! Positions

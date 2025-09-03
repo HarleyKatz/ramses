@@ -22,6 +22,12 @@ subroutine init_sink
   real(dp)::stform,sacc_rate,sacc_mass,srho_gas,sc2_gas,seps_sink,svg1,svg2,svg3,sm2,dmf
   character::co
   character(LEN=200)::comment_line
+#ifdef INDIVIDUAL_SINK_STARS
+  real(dp)::sm1a,stms
+  real(dp)::smet1,smet2,smet3,smet4,smet5,smet6,smet7,smet8,smet9,smet10
+  integer::sef
+#endif
+
 
   ! Allocate all sink related quantities...
   allocate(idsink(1:nsinkmax))
@@ -31,6 +37,13 @@ subroutine init_sink
   allocate(dmfsink(1:nsinkmax))
   allocate(xsink(1:nsinkmax,1:ndim))
   msink=0d0; msmbh=0d0; dmfsink=0d0; xsink=boxlen/2
+#ifdef INDIVIDUAL_SINK_STARS
+  allocate(msink_actual(1:nsinkmax))
+  allocate(sink_metallicity(1:nsinkmax,1:NMETALS))
+  allocate(evolution_flag(1:nsinkmax))
+  allocate(main_sequence_time(1:nsinkmax))
+  msink_actual=0.d0; sink_metallicity=0.d0; evolution_flag=1; main_sequence_time=0.d0
+#endif
 
   allocate(xsink_graddescent(1:nsinkmax,1:ndim))
   allocate(graddescent_over_dt(1:nsinkmax))
@@ -65,10 +78,16 @@ subroutine init_sink
   wden=0d0; wmom=0d0; weth=0d0; wvol=0d0; wdiv=0d0
   wden_new=0d0; wmom_new=0d0; weth_new=0d0; wvol_new=0d0; wdiv_new=0d0
   allocate(msink_new(1:nsinkmax))
+#ifdef INDIVIDUAL_SINK_STARS
+  allocate(sink_metallicity_new(1:nsinkmax,1:NMETALS))
+#endif
   allocate(msmbh_new(1:nsinkmax))
   allocate(dmfsink_new(1:nsinkmax))
   allocate(msmbh_all(1:nsinkmax))
   allocate(msink_all(1:nsinkmax))
+#ifdef INDIVIDUAL_SINK_STARS
+  allocate(sink_metallicity_all(1:nsinkmax,1:NMETALS))
+#endif
   allocate(dmfsink_all(1:nsinkmax))
   allocate(tsink_new(1:nsinkmax))
   allocate(tsink_all(1:nsinkmax))
@@ -144,6 +163,23 @@ subroutine init_sink
      read(10,'(A200)')comment_line
      read(10,'(A200)')comment_line
      do
+#ifdef INDIVIDUAL_SINK_STARS
+        ! TODO(code): this is currently hardcoded for 10 metal species, need to generalize
+        read(10,'(I10,21(A1,ES17.10),A1,I10,A1,ES17.10,A1,I10,A1,ES17.10,10(A1,ES17.10))',end=104)sid,co, sm1,co,&
+                           sx1,co,sx2,co,sx3,co, &
+                           sv1,co,sv2,co,sv3,co, &
+                           sl1,co,sl2,co,sl3,co, &
+                           stform,co, sacc_rate,co, &
+                           sacc_mass,co, &
+                           srho_gas,co, sc2_gas,co, seps_sink,co, &
+                           svg1,co,svg2,co,svg3,co, &
+                           sm2,co,dmf,co,slevel,co, &
+                           sm1a,co,sef,co,stms,co, &
+                           smet1,co,smet2,co,smet3,co, &
+                           smet4,co,smet5,co,smet6,co, &
+                           smet7,co,smet8,co,smet9,co, &
+                           smet10
+#else
         read(10,'(I10,21(A1,ES21.10),A1,I10)',end=104)sid,co, sm1,co,&
                            sx1,co,sx2,co,sx3,co, &
                            sv1,co,sv2,co,sv3,co, &
@@ -153,6 +189,7 @@ subroutine init_sink
                            srho_gas,co, sc2_gas,co, seps_sink,co, &
                            svg1,co,svg2,co,svg3,co, &
                            sm2,co,dmf,co,slevel
+#endif
         nsink=nsink+1
         idsink(nsink)=sid
         msink(nsink)=sm1
@@ -179,6 +216,22 @@ subroutine init_sink
         dmfsink(nsink)=dmf
         vsold(nsink,1:ndim,slevel)=vsink(nsink,1:ndim)
         vsnew(nsink,1:ndim,slevel)=vsink(nsink,1:ndim)
+#ifdef INDIVIDUAL_SINK_STARS
+        msink_actual(nsink)=sm1a
+        evolution_flag(nsink)=sef
+        main_sequence_time(nsink)=stms
+        !TODO(code): hard coded for 10 metals, need to generalize
+        sink_metallicity(nsink,1)=smet1
+        sink_metallicity(nsink,2)=smet2
+        sink_metallicity(nsink,3)=smet3
+        sink_metallicity(nsink,4)=smet4
+        sink_metallicity(nsink,5)=smet5
+        sink_metallicity(nsink,6)=smet6
+        sink_metallicity(nsink,7)=smet7
+        sink_metallicity(nsink,8)=smet8
+        sink_metallicity(nsink,9)=smet9
+        sink_metallicity(nsink,10)=smet10
+#endif
      end do
 104  continue
      sinkint_level=slevel

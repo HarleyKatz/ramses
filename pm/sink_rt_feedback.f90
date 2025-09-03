@@ -8,13 +8,28 @@ SUBROUTINE update_sink_RT_feedback
 ! Turn on RT advection if needed.
 ! Update photon group properties from stellar populations.
 !-------------------------------------------------------------------------
+  use amr_commons, only: aexp, myid
   use rt_parameters
   use sink_feedback_parameters
+#ifdef INDIVIDUAL_SINK_STARS
+  use pm_parameters, only: nsink
+#endif
   implicit none
 
   if(nstellar>0)then
      rt_advect=.true.
   endif
+
+#ifdef INDIVIDUAL_SINK_STARS
+  if(.not.rt_advect) then 
+     if(nsink>0)then
+        if(myid==1) write(*,*) '*****************************************'
+        if(myid==1) write(*,*) 'Stellar RT turned on at a=',aexp
+        if(myid==1) write(*,*) '*****************************************'
+        rt_advect=.true.
+     endif
+   end if
+#endif
 
 END SUBROUTINE update_sink_RT_feedback
 !*************************************************************************
@@ -43,6 +58,7 @@ SUBROUTINE sink_RT_feedback(ilevel, dt)
   !this array gathers the ionising flux by looping over stellar object
   !note that this array is local and therefore is not declared in pm_common
   real(dp),dimension(1:nsink,1:ngroups):: sink_ioni_flux
+  logical::ok_part=.false.
 !-------------------------------------------------------------------------
   if(.not.rt_advect)RETURN
   if(nsink .le. 0 ) return
@@ -67,7 +83,13 @@ SUBROUTINE sink_RT_feedback(ilevel, dt)
            do jpart = 1, npart1
               next_part = nextp(ipart)
               ! only sink cloud particles
-              if(idp(ipart) .lt. 0) then
+              ok_part = .false.
+              if (rt_sink_central_cloud) then
+                 ok_part = (typep(ipart)%family.eq.FAM_CLOUD) .and. (typep(ipart)%tag.eq.1)
+              else
+                 ok_part = (idp(ipart).lt.0)
+              end if
+              if (ok_part) then
                  npart2 = npart2+1
               endif
               ipart = next_part
@@ -82,7 +104,14 @@ SUBROUTINE sink_RT_feedback(ilevel, dt)
            ! Loop over particles
            do jpart = 1, npart1
               next_part = nextp(ipart)
-              if(idp(ipart) .lt. 0) then
+              ! only sink cloud particles
+              ok_part = .false.
+              if (rt_sink_central_cloud) then
+                 ok_part = (typep(ipart)%family.eq.FAM_CLOUD) .and. (typep(ipart)%tag.eq.1)
+              else
+                 ok_part = (idp(ipart).lt.0)
+              end if
+              if(ok_part) then
                  if(ig==0)then
                     ig=1
                     ind_grid(ig)=igrid
@@ -119,7 +148,7 @@ END SUBROUTINE sink_RT_feedback
 !*************************************************************************
 !*************************************************************************
 SUBROUTINE gather_ioni_flux(dt,sink_ioni_flux)
-! This routine is called by sink_RT_feedback is stellar objects are used
+! This routine is called by sink_RT_feedback if stellar objects are used
 ! It gathers the ionising flux on each sinks which is used to perform ionising radiation feedback
 
 ! sink_ioni_flux =>  the ionising flux of each sink
@@ -127,7 +156,8 @@ SUBROUTINE gather_ioni_flux(dt,sink_ioni_flux)
   use pm_commons
   use rt_parameters
   use sink_feedback_parameters
-
+  use SED_module, only: interpolate_popII_table, interpolate_popIII_table, get_popIII_temp_from_mass
+  use constants, only: M_sun
   implicit none
 
   real(dp),intent(in)::dt
@@ -135,9 +165,35 @@ SUBROUTINE gather_ioni_flux(dt,sink_ioni_flux)
   integer:: istellar,isink,ig
   real(dp)::M_stellar,Flux_stellar
   real(dp),dimension(1:ngroups)::nphotons
+  real(dp)::star_effective_temp, star_met, star_met_fe
+  real(dp)::scale_nH,scale_T2,scale_l,scale_d,scale_t,scale_v, scale_msun
+
+  call units(scale_l,scale_t,scale_d,scale_v,scale_nH,scale_T2)
+  scale_msun = scale_d * (scale_l**3) / M_sun
 
   sink_ioni_flux = 0d0
 
+#ifdef INDIVIDUAL_SINK_STARS
+  do isink=1,nsink
+     !Only main-sequence sinks emit
+     if (evolution_flag(isink).eq.0) then 
+
+        ! Get the stellar metallicity (in terms of oxygen abundance)
+        star_met = 12.d0 + LOG10((sink_metallicity(isink,5)+1.d-40)/(sink_metallicity(isink,1) * 15.9994d0))
+
+        do ig=1,ngroups
+           !TODO(code): for now assume everything is a modified blackbody
+           if (star_met.lt.z_crit_pop3) then
+              star_effective_temp = get_popIII_temp_from_mass(msink_actual(isink) * scale_msun)
+              sink_ioni_flux(isink,ig) = interpolate_popIII_table(star_effective_temp,ig)
+           else
+              star_met_fe = LOG10((sink_metallicity(isink,10)+1.d-40)/(sink_metallicity(isink,1) * 55.854d0)) - LOG10(3.16E-05)
+              sink_ioni_flux(isink,ig) = interpolate_popII_table(star_met_fe,msink_actual(isink) * scale_msun,ig)
+           end if
+        end do
+     end if
+  end do
+#else
   do istellar=1,nstellar
     ! find corresponding sink
      isink = 1
@@ -167,6 +223,7 @@ SUBROUTINE gather_ioni_flux(dt,sink_ioni_flux)
      enddo
 
   enddo
+#endif
 
 END SUBROUTINE gather_ioni_flux
 !*************************************************************************
@@ -300,7 +357,7 @@ SUBROUTINE sink_RT_vsweep_stellar(ind_grid,ind_part,ind_grid_part,ng,np,dt,ileve
      end if
   end do
 
-  ! Compute parent cell adress
+  ! Compute parent cell address
   do j = 1, np
      if( ok(j) )then
         indp(j) = ncoarse + (icell(j)-1)*ngridmax + igrid(j)
@@ -317,8 +374,10 @@ SUBROUTINE sink_RT_vsweep_stellar(ind_grid,ind_part,ind_grid_part,ng,np,dt,ileve
         isink=-idp(ind_part(j))
         ! deposit the photons onto the grid
         do ig=1,ngroups
+         !   rtunew(indp(j),iGroups(ig))=rtunew(indp(j),iGroups(ig)) + &
+         !        sink_ioni_flux(isink,ig) * dt / dble(ncloud_sink) / vol_cgs / scale_Np
            rtunew(indp(j),iGroups(ig))=rtunew(indp(j),iGroups(ig)) + &
-                sink_ioni_flux(isink,ig) * dt / dble(ncloud_sink) / vol_cgs / scale_Np
+                sink_ioni_flux(isink,ig) * dt / vol_cgs / scale_Np
         end do
 
      endif

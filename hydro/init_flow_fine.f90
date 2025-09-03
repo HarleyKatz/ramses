@@ -29,6 +29,10 @@ subroutine init_flow_fine(ilevel)
   use amr_commons
   use hydro_commons
   use cooling_module
+#ifdef RTZ
+  use rt_parameters, only:iIons
+  use rtz_module
+#endif
   use mpi_mod
 #if USE_TURB==1
   use turb_commons
@@ -61,6 +65,11 @@ subroutine init_flow_fine(ilevel)
   character(LEN=5)::nchar,ncharvar
 
   integer,parameter::tag=1107
+
+#ifdef RTZ
+  integer::counter,ielements,jions
+  real(dp)::total_element_mass
+#endif
 
   if(numbtot(1,ilevel)==0)return
   if(verbose)write(*,111)ilevel
@@ -264,11 +273,13 @@ subroutine init_flow_fine(ilevel)
            if(myid==1)write(*,*)'Initialize corresponding variable to default value'
            if(ncache>0)then
               init_array=0d0
+#ifndef RTZ
               ! Default value for metals
               if(cosmo.and.ivar==imetal.and.metal)init_array=z_ave*0.02d0 ! from solar units
               ! Default value for ionization fraction
               if(cosmo)xval=sqrt(omega_m)/(h0/100*omega_b) ! From the book of Peebles p. 173
               if(cosmo.and.ivar==ixion.and.aton)init_array=1.2d-5*xval
+#endif
            endif
         endif
 
@@ -282,6 +293,52 @@ subroutine init_flow_fine(ilevel)
               if(ivar==3)init_array=dfact(ilevel)*vfact(1)*dx_loc/dxini(ilevel)*init_array/vfact(ilevel)
               if(ivar==4)init_array=dfact(ilevel)*vfact(1)*dx_loc/dxini(ilevel)*init_array/vfact(ilevel)
               if(ivar==neul)init_array=(1.0d0+init_array)*T2_start/scale_T2
+#ifdef RTZ
+              total_element_mass = 0.d0
+              if(ivar.ge.imetal.and.ivar.lt.iIons) then
+                 do ielements=1,n_elements
+                    if (elements(ielements)%atomic_number.gt.0.d0) then
+                       if (ielements.gt.2) then 
+                          total_element_mass = total_element_mass + (elements(ielements)%atomic_mass * elements(ielements)%z_solar * z_ave)
+                       else
+                          total_element_mass = total_element_mass + (elements(ielements)%atomic_mass * elements(ielements)%z_solar)
+                       end if
+                    end if
+                 end do
+
+                 do ielements=1,n_elements
+                    if(ivar.eq.elements(ielements)%u_hydro_idx) then
+                       if (ielements.gt.2) then 
+                          init_array = (elements(ielements)%atomic_mass * elements(ielements)%z_solar) * z_ave / total_element_mass
+                       else
+                          init_array = (elements(ielements)%atomic_mass * elements(ielements)%z_solar) / total_element_mass
+                       end if 
+                    end if 
+                 end do 
+              end if
+
+              ! Now set all ionization states to neutral except for hydrogen
+              ! We use an initial parameter to give a small electron fraction
+              ! which one should compute with recfast
+              counter = 0
+              do ielements=1,n_elements
+                 do jions=1,elements(ielements)%n_ions
+                    if (jions.eq.1) then 
+                       if (ivar.eq.iIons+counter) then
+                          if (ielements.eq.1) then
+                             init_array = 1.d0 - init_xe 
+                          else
+                             init_array = 1.d0 ! Initialize every species to neutral
+                          endif
+                       end if
+                    end if
+                    if (jions.eq.2 .and. ielements.eq.1 .and. ivar.eq.iIons+counter) then 
+                       init_array = init_xe 
+                    end if
+                    counter = counter + 1
+                 end do
+              end do
+#endif
            endif
 
            ! Loop over cells

@@ -106,6 +106,7 @@ subroutine update_time(ilevel)
 #ifdef SOLVERmhd
            write(*,'(" emag=",ES9.2)') emag_tot
 #endif
+           write(*,'(" Maximum current allowed level=",I2)') levelmax_current
            if(pic)then
               write(*,888)nstep,t,dt,aexp,&
                    & real(100.0D0*dble(used_mem_tot)/dble(ngridmax+1)),&
@@ -206,7 +207,22 @@ subroutine update_time(ilevel)
 999 format(' Level ',I2,' has ',I10,' grids (',3(I8,','),')')
 
 end subroutine update_time
-
+!------------------------------------------------------------------------
+SUBROUTINE getProperTime_init(tproper)
+! Calculate proper time tproper corresponding to conformal time tau (both
+! in code units).
+!------------------------------------------------------------------------
+  use amr_commons
+  implicit none
+  real(dp)::tau, tproper
+  integer::i
+  i = 1
+  do while( aexp_frw(i) > 1d-4 .and. i < n_frw )
+     i = i+1
+  end do
+  tproper = t_frw(i  )*(tau-tau_frw(i-1))/(tau_frw(i  )-tau_frw(i-1))+ &
+          & t_frw(i-1)*(tau-tau_frw(i  ))/(tau_frw(i-1)-tau_frw(i  ))
+END SUBROUTINE getProperTime_init
 !------------------------------------------------------------------------
 SUBROUTINE getProperTime(tau,tproper)
 ! Calculate proper time tproper corresponding to conformal time tau (both
