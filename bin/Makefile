@@ -137,52 +137,12 @@ endif
 #############################################################################
 # Fortran compiler options and directives
 
-# GNU compiler (gfortran)
-ifeq ($(COMPILER),GNU)
-   FFLAGS = -cpp $(DEFINES)
-   ifeq ($(MPI),1)
-      F90 = $(MPIF90)
-      FC = gfortran
-   else
-      F90 = gfortran
-      FC = gfortran
-      FFLAGS += -DWITHOUTMPI
-   endif
-   F90 += -ffree-line-length-none -fimplicit-none 
-   FC += -ffree-line-length-none -fimplicit-none 
-   ifeq ($(GCOV),1)
-         F90 += -O0 -fprofile-arcs -ftest-coverage
-   else
-      ifeq ($(DEBUG),1)
-         F90 += -g -O0 -fbacktrace -fbounds-check -Wuninitialized -Wall
-         FFLAGS += -ffpe-trap=zero,underflow,overflow,invalid -finit-real=nan
-      else
-         F90 += -O3
-      endif
-   endif
-endif
+F90 = $(MPIF90)
+FC = gfortran
+FFLAGS = -cpp $(DEFINES)
+F90 += -ffree-line-length-none -fimplicit-none -g -O3 -fbacktrace
+FC += -ffree-line-length-none -fimplicit-none -g -O3 -fbacktrace
 
-# Intel compiler
-ifeq ($(COMPILER),INTEL)
-   FFLAGS = -cpp $(DEFINES)
-   ifeq ($(MPI),1)
-      F90 = $(MPIF90)
-      FC = ifort
-      FFLAGS += -DNOSYSTEM
-   else
-      F90 = ifort
-      FC = ifort
-      FFLAGS += -DWITHOUTMPI
-   endif
-   F90 += -fp-model source
-   FC += -fp-model source
-   ifeq ($(DEBUG),1)
-      F90 += -warn all -O0 -g -traceback -check bounds
-      FFLAGS += -fpe0 -ftrapuv -init=zero -init=snan -init=arrays
-   else
-      F90 += -O3
-   endif
-endif
 
 #############################################################################
 MOD = mod
@@ -221,7 +181,7 @@ VPATH += ../hydro:../pm:../poisson:../amr:../io
 #############################################################################
 # All objects
 MODOBJ = mpi_mod.o amr_parameters.o amr_commons.o amr_constants.o random.o pm_parameters.o sink_feedback_parameters.o \
-         pm_commons.o poisson_parameters.o collapse_parameters.o dump_utils.o constants.o safe_math.o file_module.o
+         pm_commons.o poisson_parameters.o collapse_parameters.o dump_utils.o constants.o safe_math_module.o file_module.o
 ifeq ($(GRACKLE),1)
    MODOBJ += grackle_parameters.o
 endif
@@ -239,7 +199,7 @@ ifeq ($(RTZ),1)
              collisional_ionization_module.o recombination_module.o \
              cosmic_ray_ionization_module.o photoionization_UVB_module.o \
              dust_recombination_module.o molecules_module.o charge_exchange_module.o \
-             rtz_coolrates_module.o rtz_cooling_module.o
+             auger_ionization_module.o rtz_coolrates_module.o rtz_cooling_module.o
 endif
 ifeq ($(USE_TURB),1)
    MODOBJ += turb_parameters.o turb_commons.o
@@ -249,7 +209,7 @@ AMROBJ = read_params.o init_amr.o init_time.o init_refine.o tracer_utils.o adapt
          amr_step.o update_time.o timer.o output_amr.o flag_utils.o \
          physical_boundaries.o virtual_boundaries.o refine_utils.o \
          nbors_utils.o hilbert.o load_balance.o title.o sort.o cooling_fine.o \
-         eos.o units.o light_cone.o movie.o memory.o end.o
+         eos.o units.o light_cone.o movie_lines_module.o movie.o memory.o end.o
 # Particle-Mesh objects
 PMOBJ = init_part.o output_part.o rho_fine.o synchro_fine.o move_fine.o \
         newdt_fine.o particle_tree.o add_list.o remove_list.o star_formation.o \

@@ -156,7 +156,9 @@ SUBROUTINE gather_ioni_flux(dt,sink_ioni_flux)
   use pm_commons
   use rt_parameters
   use sink_feedback_parameters
+#ifdef INDIVIDUAL_SINK_STARS
   use SED_module, only: interpolate_popII_table, interpolate_popIII_table, get_popIII_temp_from_mass
+#endif
   use constants, only: M_sun
   implicit none
 

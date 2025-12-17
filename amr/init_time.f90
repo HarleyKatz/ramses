@@ -12,6 +12,7 @@ subroutine init_time
   use cosmic_ray_ionization_module, only: initialize_cr_rates
   use photoionization_UVB_module, only: load_UVB_data, update_UVB
   use charge_exchange_module, only: load_ct_rates
+  use auger_ionization_module, only: load_auger_yields
   use rtz_coolrates_module, only: initialize_high_temperature_metal_cooling, initialize_fine_structure_tables
   use metal_yields_module, only: initialize_SN_yields
   use molecules_module, only: initialize_SCO_table
@@ -346,6 +347,9 @@ subroutine init_time
 
   ! Initialize tables for CO self-shielding
   call initialize_SCO_table()
+
+  ! Initialize tables for auger ionization
+  call load_auger_yields()
 
   ! Initialize the metal yields
   call initialize_SN_yields()

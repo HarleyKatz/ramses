@@ -75,7 +75,7 @@ FUNCTION dust_recombination(ion, nelem, T, G, ne) result(rate)
   ! First check to make sure that all elements are not zero
   row_sum = 0.0
   do i = 1, 7
-     row_sum = row_sum + abs(dust_rec_coefs(nelem,i))
+     row_sum = row_sum + abs(dust_rec_coefs(i,nelem))
   end do
 
   ! In this case there is nothing to compute

@@ -1,5 +1,6 @@
 ! cross_sections_module.f90
 module cross_sections_module
+  use amr_parameters, only: dp
   implicit none
 
   private
@@ -19,12 +20,20 @@ module cross_sections_module
 
   type(cross_sections) :: verner_cross_sections
 
+  ! These are the nl-resolved cross sections
+  ! They are needed for higher enery photons (e.g. x-rays)
+  real(dp),dimension(1:27,1:27,1:7,1:7)::verner_cross_sections_nl
+
 CONTAINS
 
 SUBROUTINE initialize_cross_sections()
   ! Photoionization cross sections from
   ! https://articles.adsabs.harvard.edu/pdf/1996ApJ...465..487V
   implicit none
+
+  integer :: a, b, c, d
+  real(dp) :: x1, x2, x3, x4, x5, x6, l_state
+  integer :: ios, nl_state
 
   verner_cross_sections%E_th = 0.d0
   verner_cross_sections%E_max = 0.d0
@@ -223,7 +232,67 @@ SUBROUTINE initialize_cross_sections()
                                           3.512d+00, 4.263d+00, 8.712d-03, 0.000d+00, &
                                           0.000d+00, 0.000d+00 /)
 
+
+  ! Initialize cross sections to large negative numbers
+  verner_cross_sections_nl = -999.d0
+
+  ! Load the n,l - resolved cross sections
+  open(unit=10, file='./data/verner_nl_cross_sections/phfit.dat', status='old', action='read')
+
+  do
+     read(10, *, iostat=ios) a, b, c, d, x1, x2, x3, x4, x5, x6
+     if (ios /= 0) exit
+
+     ! Select only up to iron
+     if (a.lt.27) then
+         if (c.eq.1 .and. d.eq.0) then      !1s
+            nl_state = 1
+         else if (c.eq.2 .and. d.eq.0) then !2s
+            nl_state = 2
+         else if (c.eq.2 .and. d.eq.1) then !2p
+            nl_state = 3
+         else if (c.eq.3 .and. d.eq.0) then !3s
+            nl_state = 4
+         else if (c.eq.3 .and. d.eq.1) then !3p
+            nl_state = 5
+         else if (c.eq.3 .and. d.eq.2) then !3d
+            nl_state = 6
+         else if (c.eq.4 .and. d.eq.0) then !4s
+            nl_state = 7
+         endif
+         verner_cross_sections_nl(a,a-b+1,nl_state,1) = x1 ! E_th
+         verner_cross_sections_nl(a,a-b+1,nl_state,2) = x2 ! E_0
+         verner_cross_sections_nl(a,a-b+1,nl_state,3) = x3 ! sigma_0
+         verner_cross_sections_nl(a,a-b+1,nl_state,4) = x4 ! y_a
+         verner_cross_sections_nl(a,a-b+1,nl_state,5) = x5 ! P
+         verner_cross_sections_nl(a,a-b+1,nl_state,6) = x6 ! y_w
+         verner_cross_sections_nl(a,a-b+1,nl_state,7) = REAL(d,dp) ! l
+     end if
+  end do
+
+  close(10)
+
 END SUBROUTINE initialize_cross_sections
+
+FUNCTION F_of_y(y, yw, ya, P, Q) result(Fy)
+    implicit none
+    real(dp), intent(in):: y, yw, ya, P, Q
+    real(dp)::Fy
+
+    Fy = (((y - 1d0)**2d0) + (yw**2.)) * (y**(-Q)) * ((1d0 + SQRT(y/ya))**(-P))
+END FUNCTION F_of_y
+
+FUNCTION verner_cs_nl(E, sig_0, E_0, yw, ya, P, l) result(cs_nl)
+    implicit none
+    real(dp), intent(in):: E, sig_0, E_0, yw, ya, P, l
+    real(dp)::cs_nl
+    real(dp):: y, Q
+
+    y = E / E_0
+    Q = 5.5d0 + l - (0.5d0 * P)
+    cs_nl =  sig_0 * F_of_y(y,yw,ya,P,Q)
+
+END FUNCTION verner_cs_nl
 
 FUNCTION getCrosssection_rtz(lambda, element, ion) result(cross_sec)
    use constants, only: eV2erg, c_cgs, hplanck
@@ -232,6 +301,8 @@ FUNCTION getCrosssection_rtz(lambda, element, ion) result(cross_sec)
    integer, intent(in)::element, ion
    real(KIND=8):: cross_sec
    real(KIND=8) :: x, y, F, E
+   integer :: i
+   real(KIND=8) :: E_0, sig_0, ya, P, yw, l 
 
    ! Initialize cross section to 0
    cross_sec = 0.d0
@@ -271,8 +342,21 @@ FUNCTION getCrosssection_rtz(lambda, element, ion) result(cross_sec)
       cross_sec = 0.d0
    endif
 
+   ! Above E_max, use the n,l resolved cross sections
    if (E.gt.verner_cross_sections%E_max(element,ion)) then
       cross_sec = 0.d0
+      do i = 1,7
+         if (verner_cross_sections_nl(element,ion,i,7) .ge. 0.d0) then 
+            E_0   = verner_cross_sections_nl(element,ion,i,2)
+            sig_0 = verner_cross_sections_nl(element,ion,i,3)
+            ya    = verner_cross_sections_nl(element,ion,i,4)
+            P     = verner_cross_sections_nl(element,ion,i,5)
+            yw    = verner_cross_sections_nl(element,ion,i,6)
+            l     = verner_cross_sections_nl(element,ion,i,7)
+            cross_sec = cross_sec + verner_cs_nl(E, sig_0, E_0, yw, ya, P, l)
+         end if
+      end do
+      cross_sec = cross_sec * 1.d-18 ! Convert to cm^-2
    endif
 
 END FUNCTION getCrosssection_rtz

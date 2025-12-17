@@ -90,7 +90,7 @@ module pm_parameters
   integer :: tracer_first_balance_levelmin = -1  ! Set to >0 to add more weight on level finer than this
   integer :: tracer_first_balance_part_per_cell = 0 ! Typical initial number of parts per cell
 
-#ifdef INDIVIDUAL_SINK_STARS
+!#ifdef INDIVIDUAL_SINK_STARS
   real(dp) :: p3_mchar=20.d0 ! Characteristic mass of Pop III stars
   real(dp) :: z_crit_pop3 = 4.69 ! 10^-4 Zsol
   real(dp) :: group_mass = 4.d0
@@ -101,6 +101,6 @@ module pm_parameters
   real(dp) :: imf_a1 = -1.3d0
   real(dp) :: imf_a2 = -2.3d0
   integer :: uniform_rand_seed = 42 
-#endif 
+!#endif 
 
 end module pm_parameters
