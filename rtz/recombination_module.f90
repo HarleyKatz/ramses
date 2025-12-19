@@ -7,6 +7,31 @@ module recombination_module
   private  ! everything is private by default
   public :: recombination
 
+  ! Hydrogen radiative and dielectronic recombination rates
+  real(dp), dimension(6,2) :: RR_rates_hydrogen = reshape( &
+  [ 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, &
+    8.3180d-11, 0.7472d+00, 2.9650d+00, 7.0010d+05, 0.0000d+00, 0.0000d+00 ], &
+    shape=[6,2])
+
+  ! Helium radiative and dielectronic recombination rates
+  real(dp), dimension(6,3) :: RR_rates_helium = reshape( &
+  [ 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, &
+    5.2350d-11, 0.6988d+00, 7.3010d+00, 4.4750d+06, 0.0829d+00, 1.6820d+05, &
+    1.8180d-10, 0.7492d+00, 1.0170d+01, 2.7860d+06, 0.0000d+00, 0.0000d+00 ], &
+    shape=[6,3])
+
+  real(dp), dimension(9,3) :: DR_rates_c_helium = reshape( &
+  [ 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, &
+    1.4170d-03, 2.2350d-04,-2.1850d-05, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, &
+    0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00 ], &
+    shape=[9,3])
+
+  real(dp), dimension(9,3) :: DR_rates_e_helium = reshape( &
+  [ 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, &
+    4.6330d+05, 5.5320d+05, 8.8870d+05, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, &
+    0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00 ], &
+    shape=[9,3])
+
   ! Carbon radiative and dielectronic recombination rates
   real(dp), dimension(6,7) :: RR_rates_carbon = reshape( &
   [ 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, 0.0000d+00, &
@@ -563,27 +588,35 @@ FUNCTION recombination(T, ion, element_idx) result(rate)
   real(dp), intent(in) :: T
   integer, intent(in) :: ion, element_idx
   real(dp) :: rate
-  real(dp) :: lam, f, A, B, T0, T1
+  real(dp) :: lam, f, A, B, T0, T1, x
   integer :: i
 
   rate = 0.0d0
 
+  ! No recombination in the ground state
+  if (ion.eq.1) return
+
   select case (element_idx)
+  ! case (1)  ! Hydrogen
+  !   lam = 315614.0d0 / T
+  !   f = 1.0d0 + (lam / 2.74d0)**0.407d0
+  !   rate = 2.753d-14 * lam**1.5d0 / f**2.242d0
+  ! case (2)  ! Helium
+  !   select case (ion)
+  !     case (2)  ! HeII → HeI
+  !       lam = 570670.0d0 / T
+  !       rate = 1.26d-14 * lam**0.75d0
+  !     case (3)  ! HeIII → HeII
+  !       lam = 1263030.0d0 / T
+  !       f = 1.0d0 + (lam / 2.74d0)**0.407d0
+  !       rate = 5.506d-14 * lam**1.5d0 / f**2.242d0
+  !   end select
+
   case (1)  ! Hydrogen
-    lam = 315614.0d0 / T
-    f = 1.0d0 + (lam / 2.74d0)**0.407d0
-    rate = 2.753d-14 * lam**1.5d0 / f**2.242d0
+    rate = alpha_RR(T, RR_rates_hydrogen(:,ion)) 
 
   case (2)  ! Helium
-    select case (ion)
-      case (2)  ! HeII → HeI
-        lam = 570670.0d0 / T
-        rate = 1.26d-14 * lam**0.75d0
-      case (3)  ! HeIII → HeII
-        lam = 1263030.0d0 / T
-        f = 1.0d0 + (lam / 2.74d0)**0.407d0
-        rate = 5.506d-14 * lam**1.5d0 / f**2.242d0
-    end select
+    rate = alpha_RR(T, RR_rates_helium(:,ion)) + alpha_DR(T, DR_rates_e_helium(:,ion), DR_rates_c_helium(:,ion))
 
   case (6)  ! Carbon
     rate = alpha_RR(T, RR_rates_carbon(:,ion)) + alpha_DR(T, DR_rates_e_carbon(:,ion), DR_rates_c_carbon(:,ion))

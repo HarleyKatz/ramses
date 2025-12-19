@@ -489,6 +489,14 @@ SUBROUTINE read_rt_groups()
     enddo
   endif
 
+#ifdef RTZ
+  ! Set which bins are considered x-ray bins
+  ! This is set at 0.1 keV
+  do i=1,nGroups
+    if (groupL0(i).gt.100d0) isXR(i) = 1
+  end do
+#endif
+
   do i=nlevelmax,levelmin,-1
 #ifdef RTZ
      call rtz_updateRTGroups_CoolConstants(i)

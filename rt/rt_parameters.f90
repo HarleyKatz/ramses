@@ -179,6 +179,7 @@ module rt_parameters
   logical::rtz_include_auger_ionization=.true.
   logical::isH2_rtz=.false.
   integer,dimension(1:NGROUPS)::isLW=0
+  integer,dimension(1:NGROUPS)::isXR=0
   logical::isCO_rtz=.false.
   real(dp)::rtz_H2_clumping=1.d0
   real(dp)::rtz_UV_background_G0=0.d0

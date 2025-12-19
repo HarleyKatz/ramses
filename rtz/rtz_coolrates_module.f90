@@ -1975,7 +1975,7 @@ FUNCTION CT_heat_cool(T, element_number_densities, element_ion_fractions) result
 
 END FUNCTION CT_heat_cool
 
-FUNCTION local_photoheating(dNp, element_number_densities, element_ion_fractions, ilevel) result(rate)
+FUNCTION local_photoheating(dNp, element_number_densities, element_ion_fractions) result(rate)
     ! Heating due to photoionization from the local radiation field
     use rtz_module, only: elements, n_elements
     use rt_parameters, only: nGroups, PHrate
@@ -1983,7 +1983,6 @@ FUNCTION local_photoheating(dNp, element_number_densities, element_ion_fractions
     real(dp), intent(in):: element_number_densities(27)
     real(dp), intent(in):: element_ion_fractions(27,27)
     real(dp), dimension(nGroups), intent(in):: dNp
-    integer, intent(in):: ilevel
     real(dp):: rate
     integer:: ii,jj,kk
 
@@ -2001,6 +2000,41 @@ FUNCTION local_photoheating(dNp, element_number_densities, element_ion_fractions
 
     rate = MAX(rate,1.d-100)
 END FUNCTION local_photoheating
+
+FUNCTION local_compton_heating(dNp, ne, T_e) result(rate)
+    ! Compton heating --> only consider x-ray bins here
+    ! Note that in principle we should subtract this energy off the 
+    ! Mean photon energy of the bin but that isn't really possible to do
+    ! since the energy of the bin is computed as an average across all sources
+    ! As long as the electron density is low, this effect doesn't matter
+    ! --> i.e. don't use this code right close to the black holes
+    use rtz_module, only: elements, n_elements
+    use rt_parameters, only: nGroups, isXR, group_egy
+    use constants, only: kB, sigma_T, c_cgs, m_e, eV2erg
+    implicit none
+    real(dp), intent(in):: ne, T_e
+    real(dp), dimension(nGroups), intent(in):: dNp
+    real(dp):: rate
+    real(dp):: u_gamma, T_r
+    integer:: ii
+
+    rate = 0.d0
+    do ii=1,nGroups
+       ! Skip non X-ray bins
+       if (isXR(ii).ne.1) cycle
+
+       ! Estimate the radiation temperature
+       T_r = group_egy(ii) * eV2erg / (4.d0 * kB)
+
+       ! Calculate the radiation energy density
+       u_gamma = group_egy(ii) * eV2erg * dNp(ii)
+
+       ! Compute the heating rate
+       rate = rate + (4.d0 * kB * (T_r - T_e) * sigma_T * ne * u_gamma / (m_e * c_cgs)) ! erg/s/cm^3
+    end do
+
+    rate = MAX(rate,1.d-100)
+END FUNCTION local_compton_heating
 
 FUNCTION CO_cooling_koyama_00(n, nH2, nHI, nCO, T) result(rate)
     implicit none
@@ -2070,6 +2104,7 @@ SUBROUTINE all_cooling(T, ne, aexp, element_number_densities, element_ion_fracti
     real(dp):: h2_heat
     real(dp):: charge_transfer_heat_cool
     real(dp):: photoheating
+    real(dp):: compton_xray_heating
     real(dp):: total_cooling, total_heating
     integer:: save_cooling_counter
 
@@ -2350,12 +2385,21 @@ SUBROUTINE all_cooling(T, ne, aexp, element_number_densities, element_ion_fracti
     ! Save cooling rates
     saved_cooling_rates(save_cooling_counter) = charge_transfer_heat_cool; saved_cooling_rates_names(save_cooling_counter) = 'heat_CT'; save_cooling_counter = save_cooling_counter + 1
 
-    ! Photoheating from the local radiation field
+    
     if (rt_advect) then
-       photoheating = local_photoheating(dNp, element_number_densities, element_ion_fractions, ilevel)
+       ! Photoheating from the local radiation field
+       photoheating = local_photoheating(dNp, element_number_densities, element_ion_fractions)
 
        ! Save cooling rates
        saved_cooling_rates(save_cooling_counter) = photoheating; saved_cooling_rates_names(save_cooling_counter) = 'heat_PH'; save_cooling_counter = save_cooling_counter + 1
+
+       ! Compton heating from X-ray photons
+       compton_xray_heating = local_compton_heating(dNp, ne, T)
+
+       ! Save cooling rates
+       saved_cooling_rates(save_cooling_counter) = compton_xray_heating; saved_cooling_rates_names(save_cooling_counter) = 'heat_CXR'; save_cooling_counter = save_cooling_counter + 1
+
+       if (dNp(1).gt.1.d-10) write(*,*) "hrs",compton_xray_heating, photoheating
     end if
 
     !////////////////////////////////////////////////////
@@ -2389,6 +2433,7 @@ SUBROUTINE all_cooling(T, ne, aexp, element_number_densities, element_ion_fracti
 
     if (rt_advect) then
        total_heating = total_heating + photoheating
+       total_heating = total_heating + compton_xray_heating
     end if
 
     rate = total_heating - total_cooling

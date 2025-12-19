@@ -5,9 +5,24 @@ module collisional_ionization_module
 
   private  ! everything is private by default
   public :: collisional_ionization
+  public :: dE_hydrogen, dE_helium
   public :: dE_carbon, dE_oxygen, dE_nitrogen
   public :: dE_neon, dE_magnesium, dE_silicon
   public :: dE_sulfur, dE_iron
+
+  ! Hydrogen
+  real(dp), parameter :: dE_hydrogen(1)  = [13.6d0]
+  real(dp), parameter :: A_hydrogen(1)   = [0.291d-7]
+  real(dp), parameter :: X_hydrogen(1)   = [0.2320d0]
+  real(dp), parameter :: K_hydrogen(1)   = [0.39d0]
+  real(dp), parameter :: P_hydrogen(1)   = [0.d0]
+
+  ! Helium
+  real(dp), parameter :: dE_helium(2)  = [24.6d0, 54.4d0]
+  real(dp), parameter :: A_helium(2)   = [0.175d-7, 0.205d-8]
+  real(dp), parameter :: X_helium(2)   = [0.180d0, 0.265d0]
+  real(dp), parameter :: K_helium(2)   = [0.35d0, 0.25d0]
+  real(dp), parameter :: P_helium(2)   = [0.d0, 1.d0]
 
   ! Carbon
   real(dp), parameter :: dE_carbon(6)  = [11.3d0, 24.4d0, 47.9d0, 64.5d0, 392.1d0, 490.0d0]
@@ -104,20 +119,26 @@ FUNCTION collisional_ionization(T, ion, element_idx) result(rate)
     rate = 0.D0
 
     select case (element_idx)
+      ! case (1) ! Hydrogen
+      !   T5 = T / 1D5
+      !   f = 1.D0 + sqrt(T5)
+      !   rate = 5.85D-11 * (sqrt(T) / f) * safe_exp(-157809.1D0 / T)
+
+      ! case (2) ! Helium
+      !   T5 = T / 1.D5
+      !   f = 1.D0 + sqrt(T5)
+      !     select case (ion)
+      !       case (1) ! HeI -> HeII
+      !         rate = 2.38D-11 * (sqrt(T) / f) * safe_exp(-285335.4D0 / T)
+      !       case (2) ! HeII -> HeIII
+      !         rate = 5.68D-12 * (sqrt(T) / f) * safe_exp(-631515.0D0 / T)
+      !     end select
+
       case (1) ! Hydrogen
-        T5 = T / 1D5
-        f = 1.D0 + sqrt(T5)
-        rate = 5.85D-11 * (sqrt(T) / f) * safe_exp(-157809.1D0 / T)
+        rate = coll_ion(T, dE_hydrogen(ion), A_hydrogen(ion), X_hydrogen(ion), K_hydrogen(ion), P_hydrogen(ion))
 
       case (2) ! Helium
-        T5 = T / 1.D5
-        f = 1.D0 + sqrt(T5)
-          select case (ion)
-            case (1) ! HeI -> HeII
-              rate = 2.38D-11 * (sqrt(T) / f) * safe_exp(-285335.4D0 / T)
-            case (2) ! HeII -> HeIII
-              rate = 5.68D-12 * (sqrt(T) / f) * safe_exp(-631515.0D0 / T)
-          end select
+        rate = coll_ion(T, dE_helium(ion), A_helium(ion), X_helium(ion), K_helium(ion), P_helium(ion))
 
       case (6) ! Carbon
         rate = coll_ion(T, dE_carbon(ion), A_carbon(ion), X_carbon(ion), K_carbon(ion), P_carbon(ion))
