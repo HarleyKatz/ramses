@@ -35,7 +35,7 @@ NENER = 0
 # Use Grackle cooling? 1=Yes, 0=No
 GRACKLE = 0
 # Number of metal species
-NMETALS = 10
+NMETALS = 13
 # Use ATON? 1=Yes, 0=No
 ATON = 0
 # Number of photon groups for RT
@@ -46,25 +46,52 @@ NPSCAL = 0
 LIGHT_MPI_COMM = 0
 
 # Scalar quantities for RTZ ions
+# N_HYDROGEN_IONS = 2
+# N_H2 = 0
+# N_HELIUM_IONS = 3
+# N_CARBON_IONS = 7
+# N_NITROGEN_IONS = 6
+# N_OXYGEN_IONS = 6
+# N_NEON_IONS = 6
+# N_MAGNESIUM_IONS = 6
+# N_SILICON_IONS = 6
+# N_SULFUR_IONS = 6
+# N_IRON_IONS = 27
+CO = 0
 N_HYDROGEN_IONS = 2
-N_H2 = 1
+N_H2 = 0
 N_HELIUM_IONS = 3
 N_CARBON_IONS = 7
-N_NITROGEN_IONS = 6
-N_OXYGEN_IONS = 6
-N_NEON_IONS = 6
-N_MAGNESIUM_IONS = 6
-N_SILICON_IONS = 6
-N_SULFUR_IONS = 6
-N_IRON_IONS = 6
-CO = 1
+N_NITROGEN_IONS = 8
+N_OXYGEN_IONS = 9
+N_NEON_IONS = 11
+N_SODIUM_IONS = 12
+N_MAGNESIUM_IONS = 13
+N_SILICON_IONS = 15
+N_SULFUR_IONS = 17
+N_ARGON_IONS = 19
+N_CALCIUM_IONS = 21
+N_IRON_IONS = 27
+# CO = 1
+# N_HYDROGEN_IONS = 2
+# N_H2 = 0
+# N_HELIUM_IONS = 3
+# N_CARBON_IONS = 0
+# N_NITROGEN_IONS = 0
+# N_OXYGEN_IONS = 0
+# N_NEON_IONS = 0
+# N_MAGNESIUM_IONS = 0
+# N_SILICON_IONS = 0
+# N_SULFUR_IONS = 0
+# N_IRON_IONS = 0
+# CO = 0
 
 # Number of ions for RT
 ifeq ($(RTZ),1)
 NIONS := $(N_HYDROGEN_IONS)+$(N_H2)+$(N_HELIUM_IONS)
 NIONS := $(NIONS)+$(N_CARBON_IONS)+$(N_NITROGEN_IONS)+$(N_OXYGEN_IONS)
-NIONS := $(NIONS)+$(N_NEON_IONS)+$(N_MAGNESIUM_IONS)+$(N_SILICON_IONS)
-NIONS := $(NIONS)+$(N_SULFUR_IONS)+$(N_IRON_IONS)
+NIONS := $(NIONS)+$(N_NEON_IONS)+$(N_SODIUM_IONS)+$(N_MAGNESIUM_IONS)+$(N_SILICON_IONS)
+NIONS := $(NIONS)+$(N_SULFUR_IONS)+$(N_ARGON_IONS)+$(N_CALCIUM_IONS)+$(N_IRON_IONS)
 else
 # For normal ramses RT, we set this by hand
 # use 1 for HI+HII, +1 for added H2, +2 for added HeI, HeII, HeIII
@@ -118,9 +145,12 @@ ifeq ($(RTZ),1)
    DEFINES += -DN_NITROGEN_IONS=$(N_NITROGEN_IONS)
    DEFINES += -DN_OXYGEN_IONS=$(N_OXYGEN_IONS)
    DEFINES += -DN_NEON_IONS=$(N_NEON_IONS)
+   DEFINES += -DN_SODIUM_IONS=$(N_SODIUM_IONS)
    DEFINES += -DN_MAGNESIUM_IONS=$(N_MAGNESIUM_IONS)
    DEFINES += -DN_SILICON_IONS=$(N_SILICON_IONS)
    DEFINES += -DN_SULFUR_IONS=$(N_SULFUR_IONS)
+   DEFINES += -DN_ARGON_IONS=$(N_ARGON_IONS)
+   DEFINES += -DN_CALCIUM_IONS=$(N_CALCIUM_IONS)
    DEFINES += -DN_IRON_IONS=$(N_IRON_IONS)
    DEFINES += -DN_H2=$(N_H2)
    DEFINES += -DNMETALS=$(NMETALS)
@@ -199,7 +229,8 @@ ifeq ($(RTZ),1)
              collisional_ionization_module.o recombination_module.o \
              cosmic_ray_ionization_module.o photoionization_UVB_module.o \
              dust_recombination_module.o molecules_module.o charge_exchange_module.o \
-             auger_ionization_module.o rtz_coolrates_module.o rtz_cooling_module.o
+             auger_ionization_module.o secondary_ionization_module.o \
+             rtz_coolrates_module.o rtz_cooling_module.o
 endif
 ifeq ($(USE_TURB),1)
    MODOBJ += turb_parameters.o turb_commons.o

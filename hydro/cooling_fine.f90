@@ -562,16 +562,43 @@ subroutine coolfine1(ind_grid,ngrid,ilevel)
 #ifdef RTZ
         if (rtz_equilibrium_test.eq.2) then 
            nElement(1:n_elements,1:nleaf)  = 0.d0  ! Initialize to zero
-           nElement(1,1:nleaf)  = 1.d-1                          ! Hydrogen      
+           nElement(1,1:nleaf)  = 1.d-1                          ! Hydrogen  
+#if N_HELIUM_IONS > 0    
            nElement(2,1:nleaf)  = nElement(1,1:nleaf) * 8.51d-02 ! Helium
+#endif
+#if N_CARBON_IONS > 0
            nElement(6,1:nleaf)  = nElement(1,1:nleaf) * 2.69d-04 ! Carbon
+#endif
+#if N_NITROGEN_IONS > 0
            nElement(7,1:nleaf)  = nElement(1,1:nleaf) * 6.76d-05 ! Nitrogen
+#endif
+#if N_OXYGEN_IONS > 0
            nElement(8,1:nleaf)  = nElement(1,1:nleaf) * 4.90d-04 ! Oxygen
+#endif
+#if N_NEON_IONS > 0
            nElement(10,1:nleaf) = nElement(1,1:nleaf) * 8.51d-05 ! Neon
+#endif
+#if N_SODIUM_IONS > 0
+           nElement(11,1:nleaf) = nElement(1,1:nleaf) * 1.74d-06 ! Sodium
+#endif
+#if N_MAGNESIUM_IONS > 0
            nElement(12,1:nleaf) = nElement(1,1:nleaf) * 3.98d-05 ! Magnesium
+#endif
+#if N_SILICON_IONS > 0
            nElement(14,1:nleaf) = nElement(1,1:nleaf) * 3.24d-05 ! Silicon
+#endif
+#if N_SULFUR_IONS > 0
            nElement(16,1:nleaf) = nElement(1,1:nleaf) * 1.32d-05 ! Sulfur
+#endif
+#if N_ARGON_IONS > 0
+           nElement(18,1:nleaf) = nElement(1,1:nleaf) * 2.51d-06 ! Argon
+#endif
+#if N_CALCIUM_IONS > 0
+           nElement(20,1:nleaf) = nElement(1,1:nleaf) * 2.19E-06 ! Calcium
+#endif
+#if N_IRON_IONS > 0
            nElement(26,1:nleaf) = nElement(1,1:nleaf) * 3.16d-05 ! Iron
+#endif
         end if
 
         ! Compute the cell length in cm if needed

@@ -118,6 +118,18 @@ SUBROUTINE initialize_elements()
    elements(10)%symbol = "Ne"
 #endif
 
+#if N_SODIUM_IONS > 0
+   ! Element 11: Sodium
+   elements(11)%atomic_number = 11
+   elements(11)%atomic_mass = 22.99
+   elements(11)%z_solar = 1.74E-06
+   elements(11)%G0_photo_rate = 1.36e-11
+   elements(11)%n_ions = N_SODIUM_IONS
+   elements(11)%depletion = 0.2
+   elements(11)%element_name = "SODIUM"
+   elements(11)%symbol = "Na"
+#endif
+
 #if N_MAGNESIUM_IONS > 0
    ! Element 12: Magnesium
    elements(12)%atomic_number = 12
@@ -128,6 +140,18 @@ SUBROUTINE initialize_elements()
    elements(12)%depletion = 0.16
    elements(12)%element_name = "MAGNESIUM"
    elements(12)%symbol = "Mg"
+#endif
+
+#if N_ALUMINUM_IONS > 0
+   ! Element 13: Aluminum
+   elements(11)%atomic_number = 13
+   elements(11)%atomic_mass = 26.982
+   elements(11)%z_solar = 2.82E-06
+   elements(11)%G0_photo_rate = 4.39e-09
+   elements(11)%n_ions = N_ALUMINUM_IONS
+   elements(11)%depletion = 0.01
+   elements(11)%element_name = "ALUMINUM"
+   elements(11)%symbol = "Al"
 #endif
 
 #if N_SILICON_IONS
@@ -154,12 +178,48 @@ SUBROUTINE initialize_elements()
    elements(16)%symbol = "S"
 #endif
 
+#if N_CHLORINE_IONS > 0
+   ! Element 17: Chlorine
+   elements(17)%atomic_number = 17
+   elements(17)%atomic_mass = 35.453
+   elements(17)%z_solar = 3.16E-07
+   elements(17)%G0_photo_rate = 4.74E-11 
+   elements(17)%n_ions = N_CHLORINE_IONS
+   elements(17)%depletion = 0.4
+   elements(17)%element_name = "CHLORINE"
+   elements(17)%symbol = "Cl"
+#endif
+
+#if N_ARGON_IONS > 0
+   ! Element 18: Argon
+   elements(18)%atomic_number = 18
+   elements(18)%atomic_mass = 39.948
+   elements(18)%z_solar = 2.51E-06
+   elements(18)%G0_photo_rate = 0.0 ! No subionizing PI
+   elements(18)%n_ions = N_ARGON_IONS
+   elements(18)%depletion = 1.0
+   elements(18)%element_name = "ARGON"
+   elements(18)%symbol = "Ar"
+#endif
+
+#if N_CALCIUM_IONS > 0
+   ! Element 20: Calcium
+   elements(20)%atomic_number = 20
+   elements(20)%atomic_mass = 40.078
+   elements(20)%z_solar = 2.19E-06
+   elements(20)%G0_photo_rate = 3.47E-10
+   elements(20)%n_ions = N_CALCIUM_IONS
+   elements(20)%depletion = 0.0001
+   elements(20)%element_name = "CALCIUM"
+   elements(20)%symbol = "Ca"
+#endif
+
 #if N_IRON_IONS > 0
    ! Element 26: Iron
    elements(26)%atomic_number = 26
    elements(26)%atomic_mass = 55.854
    elements(26)%z_solar = 3.16E-05
-   elements(26)%G0_photo_rate = 4.71E-10
+   elements(26)%G0_photo_rate = 4.71E-10 
    elements(26)%n_ions = N_IRON_IONS
    elements(26)%depletion = 0.01
    elements(26)%element_name = "IRON"

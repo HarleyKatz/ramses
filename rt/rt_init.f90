@@ -151,6 +151,7 @@ SUBROUTINE read_rt_params(nml_ok)
        & ,isH2_rtz, isCO_rtz, rtz_UV_background_G0, rtz_H2_clumping      &
        & ,rtz_primary_cosmic_ray_ionization_rate, rtz_max_cool_timestep  &
        & ,rtz_eqm_min_its, rtz_include_auger_ionization                  &
+       & ,rtz_include_secondary_ionizations                              &
 #endif
        ! RT regions (for initialization)                                 &
        & ,rt_nregion, rt_region_type                                     &
@@ -432,14 +433,15 @@ SUBROUTINE read_rt_groups()
      if (elements(iElement)%atomic_number.gt.0) then
         ! Loop over ionization states
         do iIon=1,elements(iElement)%n_ions-1 !loop over ionization states
-           if (iElement.eq.6)  ionEvs(iElement,iIon) = dE_carbon(iIon)
-           if (iElement.eq.7)  ionEvs(iElement,iIon) = dE_nitrogen(iIon)
-           if (iElement.eq.8)  ionEvs(iElement,iIon) = dE_oxygen(iIon)
-           if (iElement.eq.10) ionEvs(iElement,iIon) = dE_neon(iIon)
-           if (iElement.eq.12) ionEvs(iElement,iIon) = dE_magnesium(iIon)
-           if (iElement.eq.14) ionEvs(iElement,iIon) = dE_silicon(iIon)
-           if (iElement.eq.16) ionEvs(iElement,iIon) = dE_sulfur(iIon)
-           if (iElement.eq.26) ionEvs(iElement,iIon) = dE_iron(iIon)
+           ionEvs(iElement,iIon) = collisional_ionization_data(1,iElement,iElement - iIon + 1)
+         !   if (iElement.eq.6)  ionEvs(iElement,iIon) = dE_carbon(iIon)
+         !   if (iElement.eq.7)  ionEvs(iElement,iIon) = dE_nitrogen(iIon)
+         !   if (iElement.eq.8)  ionEvs(iElement,iIon) = dE_oxygen(iIon)
+         !   if (iElement.eq.10) ionEvs(iElement,iIon) = dE_neon(iIon)
+         !   if (iElement.eq.12) ionEvs(iElement,iIon) = dE_magnesium(iIon)
+         !   if (iElement.eq.14) ionEvs(iElement,iIon) = dE_silicon(iIon)
+         !   if (iElement.eq.16) ionEvs(iElement,iIon) = dE_sulfur(iIon)
+         !   if (iElement.eq.26) ionEvs(iElement,iIon) = dE_iron(iIon)
         end do ! End loop over ionization states
      end if
   end do ! End loop over elements

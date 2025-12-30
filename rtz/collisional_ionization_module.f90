@@ -4,97 +4,372 @@ module collisional_ionization_module
   implicit none
 
   private  ! everything is private by default
-  public :: collisional_ionization
-  public :: dE_hydrogen, dE_helium
-  public :: dE_carbon, dE_oxygen, dE_nitrogen
-  public :: dE_neon, dE_magnesium, dE_silicon
-  public :: dE_sulfur, dE_iron
+  public :: init_ci_rates, collisional_ionization, collisional_ionization_data
 
-  ! Hydrogen
-  real(dp), parameter :: dE_hydrogen(1)  = [13.6d0]
-  real(dp), parameter :: A_hydrogen(1)   = [0.291d-7]
-  real(dp), parameter :: X_hydrogen(1)   = [0.2320d0]
-  real(dp), parameter :: K_hydrogen(1)   = [0.39d0]
-  real(dp), parameter :: P_hydrogen(1)   = [0.d0]
-
-  ! Helium
-  real(dp), parameter :: dE_helium(2)  = [24.6d0, 54.4d0]
-  real(dp), parameter :: A_helium(2)   = [0.175d-7, 0.205d-8]
-  real(dp), parameter :: X_helium(2)   = [0.180d0, 0.265d0]
-  real(dp), parameter :: K_helium(2)   = [0.35d0, 0.25d0]
-  real(dp), parameter :: P_helium(2)   = [0.d0, 1.d0]
-
-  ! Carbon
-  real(dp), parameter :: dE_carbon(6)  = [11.3d0, 24.4d0, 47.9d0, 64.5d0, 392.1d0, 490.0d0]
-  real(dp), parameter :: A_carbon(6)   = [0.685d-7, 0.186d-7, 0.635d-8, 0.150d-8, 0.299d-9, 0.123d-9]
-  real(dp), parameter :: X_carbon(6)   = [0.193d0, 0.286d0, 0.427d0, 0.416d0, 0.666d0, 0.620d0]
-  real(dp), parameter :: K_carbon(6)   = [0.25d0, 0.24d0, 0.21d0, 0.13d0, 0.02d0, 0.16d0]
-  real(dp), parameter :: P_carbon(6)   = [0.d0, 1.d0, 1.d0, 1.d0, 1.d0, 1.d0]
-
-  ! Oxygen
-  real(dp), parameter :: dE_oxygen(8)  = [13.6d0, 35.1d0, 54.9d0, 77.4d0, 113.9d0, 138.1d0, 739.3d0, 871.5d0]
-  real(dp), parameter :: A_oxygen(8)   = [0.359d-7, 0.139d-7, 0.931d-8, 0.102d-7, 0.219d-8, 0.195d-8, 0.212d-9, 0.521d-10]
-  real(dp), parameter :: X_oxygen(8)   = [0.073d0, 0.212d0, 0.270d0, 0.614d0, 0.630d0, 0.360d0, 0.396d0, 0.629d0]
-  real(dp), parameter :: K_oxygen(8)   = [0.34d0, 0.22d0, 0.27d0, 0.27d0, 0.17d0, 0.54d0, 0.35d0, 0.16d0]
-  real(dp), parameter :: P_oxygen(8)   = [0.d0, 1.d0, 1.d0, 0.d0, 1.d0, 0.d0, 0.d0, 1.d0]
-
-  ! Nitrogen
-  real(dp), parameter :: dE_nitrogen(7) = [14.5d0, 29.6d0, 47.5d0, 77.5d0, 97.9d0, 552.1d0, 667.0d0]
-  real(dp), parameter :: A_nitrogen(7)  = [0.482d-7, 0.298d-7, 0.810d-8, 0.371d-8, 0.151d-8, 0.371d-9, 0.777d-10]
-  real(dp), parameter :: X_nitrogen(7)  = [0.0652d0, 0.310d0, 0.350d0, 0.549d0, 0.0167d0, 0.546d0, 0.624d0]
-  real(dp), parameter :: K_nitrogen(7)  = [0.42d0, 0.30d0, 0.24d0, 0.18d0, 0.74d0, 0.29d0, 0.16d0]
-  real(dp), parameter :: P_nitrogen(7)  = [0.d0, 0.d0, 1.d0, 1.d0, 0.d0, 0.d0, 1.d0]
-
-  ! Neon
-  real(dp), parameter :: dE_neon(10) = [21.6d0, 41.0d0, 63.5d0, 97.1d0, 126.2d0, 157.9d0, 207.3d0, 239.1d0, 1196.0d0, 1360.6d0]
-  real(dp), parameter :: A_neon(10)  = [0.150d-7, 0.198d-7, 0.703d-8, 0.424d-8, 0.279d-8, 0.345d-8, 0.956d-9, 0.473d-9, 0.392d-10, 0.277d-10]
-  real(dp), parameter :: X_neon(10)  = [0.0329d0, 0.295d0, 0.0677d0, 0.0482d0, 0.305d0, 0.581d0, 0.749d0, 0.992d0, 0.262d0, 0.661d0]
-  real(dp), parameter :: K_neon(10)  = [0.43d0, 0.20d0, 0.39d0, 0.58d0, 0.25d0, 0.28d0, 0.14d0, 0.04d0, 0.20d0, 0.13d0]
-  real(dp), parameter :: P_neon(10)  = [1.d0, 0.d0, 1.d0, 1.d0, 1.d0, 0.d0, 1.d0, 1.d0, 1.d0, 1.d0]
-
-  ! Magnesium
-  real(dp), parameter :: dE_magnesium(12) = [7.6d0, 15.2d0, 80.1d0, 109.3d0, 141.3d0, 186.5d0, 224.9d0, 266.0d0, 328.2d0, 367.5d0, 1761.8d0, 1962.7d0]
-  real(dp), parameter :: A_magnesium(12)  = [0.621d-6, 0.192d-7, 0.556d-8, 0.435d-8, 0.710d-8, 0.170d-8, 0.122d-8, 0.220d-8, 0.486d-9, 0.235d-9, 0.206d-10, 0.175d-10]
-  real(dp), parameter :: X_magnesium(12)  = [0.592d0, 0.0027d0, 0.107d0, 0.159d0, 0.658d0, 0.242d0, 0.343d0, 0.897d0, 0.751d0, 1.030d0, 0.196d0, 0.835d0]
-  real(dp), parameter :: K_magnesium(12)  = [0.39d0, 0.85d0, 0.30d0, 0.31d0, 0.25d0, 0.28d0, 0.23d0, 0.22d0, 0.14d0, 0.10d0, 0.25d0, 0.11d0]
-  real(dp), parameter :: P_magnesium(12)  = [0.d0, 0.d0, 1.d0, 1.d0, 0.d0, 1.d0, 1.d0, 0.d0, 1.d0, 1.d0, 1.d0, 1.d0]
-
-  ! Silicon
-  real(dp), parameter :: dE_silicon(14) = [8.2d0, 16.4d0, 33.5d0, 54.0d0, 166.8d0, 205.3d0, 246.5d0, 303.5d0, 351.1d0, 401.4d0, 476.4d0, 523.5d0, 2437.7d0, 2673.2d0]
-  real(dp), parameter :: A_silicon(14)  = [0.188d-6, 0.643d-7, 0.201d-7, 0.494d-8, 0.176d-8, 0.174d-8, 0.123d-8, 0.827d-9, 0.601d-9, 0.465d-9, 0.263d-9, 0.118d-9, 0.336d-10, 0.119d-10]
-  real(dp), parameter :: X_silicon(14)  = [0.376d0, 0.632d0, 0.473d0, 0.172d0, 0.102d0, 0.180d0, 0.518d0, 0.239d0, 0.305d0, 0.666d0, 0.666d0, 0.734d0, 0.336d0, 0.989d0]
-  real(dp), parameter :: K_silicon(14)  = [0.25d0, 0.20d0, 0.22d0, 0.23d0, 0.31d0, 0.29d0, 0.07d0, 0.28d0, 0.25d0, 0.04d0, 0.16d0, 0.16d0, 0.37d0, 0.08d0]
-  real(dp), parameter :: P_silicon(14)  = [1.d0, 1.d0, 1.d0, 1.d0, 1.d0, 1.d0, 1.d0, 1.d0, 1.d0, 1.d0, 1.d0, 1.d0, 0.d0, 1.d0]
-
-  ! Sulfur data
-  real(dp), parameter :: dE_sulfur(16) = [ 10.4d0, 23.3d0, 34.8d0, 47.3d0, 72.6d0, 88.1d0, &
-      280.9d0, 328.2d0, 379.1d0, 447.1d0, 504.8d0, 564.7d0, 651.6d0, 707.2d0, 3223.9d0, 3494.2d0 ]
-  real(dp), parameter :: A_sulfur(16) = [ 0.549d-7, 0.681d-7, 0.214d-7, 0.166d-7, 0.612d-8, 0.133d-8, &
-      0.493d-8, 0.873d-9, 0.135d-8, 0.459d-9, 0.349d-9, 0.523d-9, 0.259d-9, 0.750d-10, 0.267d-10, 0.632d-11 ]
-  real(dp), parameter :: X_sulfur(16) = [ 0.100d0, 0.693d0, 0.353d0, 1.030d0, 0.580d0, 0.0688d0, &
-      1.130d0, 0.193d0, 0.431d0, 0.242d0, 0.305d0, 0.428d0, 0.854d0, 0.734d0, 0.572d0, 0.585d0 ]
-  real(dp), parameter :: K_sulfur(16) = [ 0.25d0, 0.21d0, 0.24d0, 0.14d0, 0.19d0, 0.35d0, &
-      0.16d0, 0.28d0, 0.32d0, 0.28d0, 0.25d0, 0.35d0, 0.12d0, 0.16d0, 0.28d0, 0.17d0 ]
-  real(dp), parameter :: P_sulfur(16) = [ 1.d0, 1.d0, 1.d0, 1.d0, 1.d0, 1.d0, &
-      0.d0, 1.d0, 0.d0, 1.d0, 1.d0, 0.d0, 0.d0, 1.d0, 0.d0, 1.d0 ]
-
-  ! Iron data
-  real(dp), parameter :: dE_iron(26) = [ 7.9d0, 16.2d0, 30.6d0, 54.8d0, 75.0d0, 99.0d0, 125.0d0, 151.1d0, &
-      233.6d0, 262.1d0, 290.0d0, 331.0d0, 361.0d0, 392.0d0, 457.0d0, 489.3d0, 1262.0d0, 1360.0d0, &
-      1470.0d0, 1582.0d0, 1690.0d0, 1800.0d0, 1960.0d0, 2046.0d0, 8828.0d0, 9277.7d0 ]
-  real(dp), parameter :: A_iron(26) = [ 0.252d-6, 0.221d-7, 0.410d-7, 0.353d-7, 0.104d-7, 0.123d-7, 0.947d-8, 0.471d-8, &
-      0.302d-8, 0.234d-8, 0.176d-8, 0.114d-8, 0.866d-9, 0.661d-9, 0.441d-9, 0.118d-9, 0.361d-9, 0.245d-9, &
-      0.187d-9, 0.133d-9, 0.784d-10, 0.890d-10, 0.229d-10, 0.112d-10, 0.246d-11, 0.979d-12 ]
-  real(dp), parameter :: X_iron(26) = [ 0.701d0, 0.033d0, 0.366d0, 0.243d0, 0.285d0, 0.411d0, 0.458d0, 0.280d0, &
-      0.697d0, 0.764d0, 0.805d0, 0.773d0, 0.805d0, 0.762d0, 0.698d0, 0.211d0, 1.160d0, 0.978d0, 0.988d0, &
-      1.030d0, 0.848d0, 1.200d0, 0.936d0, 0.034d0, 1.020d0, 0.664d0 ]
-  real(dp), parameter :: K_iron(26) = [ 0.25d0, 0.45d0, 0.17d0, 0.39d0, 0.17d0, 0.21d0, 0.21d0, 0.28d0, &
-      0.15d0, 0.14d0, 0.14d0, 0.15d0, 0.14d0, 0.14d0, 0.16d0, 0.15d0, 0.09d0, 0.13d0, 0.14d0, 0.12d0, &
-      0.14d0, 0.35d0, 0.12d0, 0.81d0, 0.02d0, 0.14d0 ]
-  real(dp), parameter :: P_iron(26) = [ 0.d0, 1.d0, 0.d0, 0.d0, 1.d0, 1.d0, 1.d0, 1.d0, 1.d0, 1.d0, 1.d0, 1.d0, &
-      1.d0, 1.d0, 1.d0, 1.d0, 1.d0, 1.d0, 1.d0, 1.d0, 1.d0, 0.d0, 1.d0, 0.d0, 1.d0, 1.d0 ]
+  ! data from https://www.pa.uky.edu/~verner/dima/col//cfit.f
+  real(dp), dimension(5,26,26) :: collisional_ionization_data
 
 CONTAINS
+
+SUBROUTINE init_ci_rates()
+  use amr_commons, only: myid
+  implicit none
+
+  if(myid.eq.1) write(*,*) 'Initializing collisional ionization rates'
+
+  collisional_ionization_data(:, 1, 1) = (/   13.6,0.,2.91E-08,0.2320,0.39 /)
+  collisional_ionization_data(:, 2, 2) = (/   24.6,0.,1.75E-08,0.1800,0.35 /)
+  collisional_ionization_data(:, 2, 1) = (/   54.4,1.,2.05E-09,0.2650,0.25 /)
+  collisional_ionization_data(:, 3, 3) = (/    5.4,0.,1.39E-07,0.4380,0.41 /)
+  collisional_ionization_data(:, 3, 2) = (/   75.6,1.,2.01E-09,0.2090,0.23 /)
+  collisional_ionization_data(:, 3, 1) = (/  122.4,1.,9.60E-10,0.5820,0.17 /)
+  collisional_ionization_data(:, 4, 4) = (/    9.3,0.,1.02E-07,0.3750,0.27 /)
+  collisional_ionization_data(:, 4, 3) = (/   18.2,1.,2.08E-08,0.4390,0.21 /)
+  collisional_ionization_data(:, 4, 2) = (/  153.9,0.,2.67E-09,0.6120,0.27 /)
+  collisional_ionization_data(:, 4, 1) = (/  217.7,1.,4.27E-10,0.6580,0.15 /)
+  collisional_ionization_data(:, 5, 5) = (/    8.3,0.,6.49E-08,0.2000,0.26 /)
+  collisional_ionization_data(:, 5, 4) = (/   25.2,1.,1.24E-08,0.2670,0.22 /)
+  collisional_ionization_data(:, 5, 3) = (/   37.9,1.,3.27E-09,0.2950,0.23 /)
+  collisional_ionization_data(:, 5, 2) = (/  259.4,1.,4.95E-10,0.4890,0.09 /)
+  collisional_ionization_data(:, 5, 1) = (/  340.2,1.,2.19E-10,0.6570,0.15 /)
+  collisional_ionization_data(:, 6, 6) = (/   11.3,0.,6.85E-08,0.1930,0.25 /)
+  collisional_ionization_data(:, 6, 5) = (/   24.4,1.,1.86E-08,0.2860,0.24 /)
+  collisional_ionization_data(:, 6, 4) = (/   47.9,1.,6.35E-09,0.4270,0.21 /)
+  collisional_ionization_data(:, 6, 3) = (/   64.5,1.,1.50E-09,0.4160,0.13 /)
+  collisional_ionization_data(:, 6, 2) = (/  392.1,1.,2.99E-10,0.6660,0.02 /)
+  collisional_ionization_data(:, 6, 1) = (/  490.0,1.,1.23E-10,0.6200,0.16 /)
+  collisional_ionization_data(:, 7, 7) = (/   14.5,0.,4.82E-08,0.0652,0.42 /)
+  collisional_ionization_data(:, 7, 6) = (/   29.6,0.,2.98E-08,0.3100,0.30 /)
+  collisional_ionization_data(:, 7, 5) = (/   47.5,1.,8.10E-09,0.3500,0.24 /)
+  collisional_ionization_data(:, 7, 4) = (/   77.5,1.,3.71E-09,0.5490,0.18 /)
+  collisional_ionization_data(:, 7, 3) = (/   97.9,0.,1.51E-09,0.0167,0.74 /)
+  collisional_ionization_data(:, 7, 2) = (/  552.1,0.,3.71E-10,0.5460,0.29 /)
+  collisional_ionization_data(:, 7, 1) = (/  667.0,1.,7.77E-11,0.6240,0.16 /)
+  collisional_ionization_data(:, 8, 8) = (/   13.6,0.,3.59E-08,0.0730,0.34 /)
+  collisional_ionization_data(:, 8, 7) = (/   35.1,1.,1.39E-08,0.2120,0.22 /)
+  collisional_ionization_data(:, 8, 6) = (/   54.9,1.,9.31E-09,0.2700,0.27 /)
+  collisional_ionization_data(:, 8, 5) = (/   77.4,0.,1.02E-08,0.6140,0.27 /)
+  collisional_ionization_data(:, 8, 4) = (/  113.9,1.,2.19E-09,0.6300,0.17 /)
+  collisional_ionization_data(:, 8, 3) = (/  138.1,0.,1.95E-09,0.3600,0.54 /)
+  collisional_ionization_data(:, 8, 2) = (/  739.3,0.,2.12E-10,0.3960,0.35 /)
+  collisional_ionization_data(:, 8, 1) = (/  871.4,1.,5.21E-11,0.6290,0.16 /)
+  collisional_ionization_data(:, 9, 9) = (/   17.4,1.,7.00E-08,0.1780,0.29 /)
+  collisional_ionization_data(:, 9, 8) = (/   35.0,0.,5.41E-08,0.5710,0.27 /)
+  collisional_ionization_data(:, 9, 7) = (/   62.7,1.,9.37E-09,0.3190,0.20 /)
+  collisional_ionization_data(:, 9, 6) = (/   87.1,1.,4.92E-09,0.3230,0.24 /)
+  collisional_ionization_data(:, 9, 5) = (/  114.2,0.,7.06E-09,0.6840,0.27 /)
+  collisional_ionization_data(:, 9, 4) = (/  157.2,1.,1.28E-09,0.6480,0.16 /)
+  collisional_ionization_data(:, 9, 3) = (/  185.2,1.,5.61E-10,0.7380,0.16 /)
+  collisional_ionization_data(:, 9, 2) = (/  953.9,0.,1.66E-10,0.5420,0.29 /)
+  collisional_ionization_data(:, 9, 1) = (/ 1103.1,1.,3.74E-11,0.6590,0.15 /)
+  collisional_ionization_data(:,10,10) = (/   21.6,1.,1.50E-08,0.0329,0.43 /)
+  collisional_ionization_data(:,10, 9) = (/   41.0,0.,1.98E-08,0.2950,0.20 /)
+  collisional_ionization_data(:,10, 8) = (/   63.5,1.,7.03E-09,0.0677,0.39 /)
+  collisional_ionization_data(:,10, 7) = (/   97.1,1.,4.24E-09,0.0482,0.58 /)
+  collisional_ionization_data(:,10, 6) = (/  126.2,1.,2.79E-09,0.3050,0.25 /)
+  collisional_ionization_data(:,10, 5) = (/  157.9,0.,3.45E-09,0.5810,0.28 /)
+  collisional_ionization_data(:,10, 4) = (/  207.3,1.,9.56E-10,0.7490,0.14 /)
+  collisional_ionization_data(:,10, 3) = (/  239.1,1.,4.73E-10,0.9920,0.04 /)
+  collisional_ionization_data(:,10, 2) = (/ 1196.0,1.,3.92E-11,0.2620,0.20 /)
+  collisional_ionization_data(:,10, 1) = (/ 1360.6,1.,2.77E-11,0.6610,0.13 /)
+  collisional_ionization_data(:,11,11) = (/    5.1,1.,1.01E-07,0.2750,0.23 /)
+  collisional_ionization_data(:,11,10) = (/   47.3,1.,7.35E-09,0.0560,0.35 /)
+  collisional_ionization_data(:,11, 9) = (/   71.6,1.,8.10E-09,0.1480,0.32 /)
+  collisional_ionization_data(:,11, 8) = (/   98.9,0.,1.14E-08,0.5530,0.28 /)
+  collisional_ionization_data(:,11, 7) = (/  138.4,1.,2.63E-09,0.2300,0.29 /)
+  collisional_ionization_data(:,11, 6) = (/  172.2,1.,1.85E-09,0.3630,0.22 /)
+  collisional_ionization_data(:,11, 5) = (/  208.5,0.,2.82E-09,0.6740,0.27 /)
+  collisional_ionization_data(:,11, 4) = (/  264.2,1.,6.72E-10,0.7520,0.14 /)
+  collisional_ionization_data(:,11, 3) = (/  299.9,1.,2.80E-10,0.7810,0.15 /)
+  collisional_ionization_data(:,11, 2) = (/ 1465.1,1.,4.63E-11,0.5580,0.16 /)
+  collisional_ionization_data(:,11, 1) = (/ 1648.7,1.,2.16E-11,0.7430,0.13 /)
+  collisional_ionization_data(:,12,12) = (/    7.6,0.,6.21E-07,0.5920,0.39 /)
+  collisional_ionization_data(:,12,11) = (/   15.2,0.,1.92E-08,0.0027,0.85 /)
+  collisional_ionization_data(:,12,10) = (/   80.1,1.,5.56E-09,0.1070,0.30 /)
+  collisional_ionization_data(:,12, 9) = (/  109.3,1.,4.35E-09,0.1590,0.31 /)
+  collisional_ionization_data(:,12, 8) = (/  141.3,0.,7.10E-09,0.6580,0.25 /)
+  collisional_ionization_data(:,12, 7) = (/  186.5,1.,1.70E-09,0.2420,0.28 /)
+  collisional_ionization_data(:,12, 6) = (/  224.9,1.,1.22E-09,0.3430,0.23 /)
+  collisional_ionization_data(:,12, 5) = (/  266.0,0.,2.20E-09,0.8970,0.22 /)
+  collisional_ionization_data(:,12, 4) = (/  328.2,1.,4.86E-10,0.7510,0.14 /)
+  collisional_ionization_data(:,12, 3) = (/  367.5,1.,2.35E-10,1.0300,0.10 /)
+  collisional_ionization_data(:,12, 2) = (/ 1761.8,1.,2.06E-11,0.1960,0.25 /)
+  collisional_ionization_data(:,12, 1) = (/ 1962.7,1.,1.75E-11,0.8350,0.11 /)
+  collisional_ionization_data(:,13,13) = (/    6.0,1.,2.28E-07,0.3870,0.25 /)
+  collisional_ionization_data(:,13,12) = (/   18.8,0.,1.18E-07,2.2100,0.25 /)
+  collisional_ionization_data(:,13,11) = (/   28.5,1.,4.40E-09,0.1060,0.24 /)
+  collisional_ionization_data(:,13,10) = (/  120.0,0.,1.75E-08,0.8720,0.22 /)
+  collisional_ionization_data(:,13, 9) = (/  153.8,1.,2.61E-09,0.1590,0.31 /)
+  collisional_ionization_data(:,13, 8) = (/  198.5,1.,1.85E-09,0.1520,0.36 /)
+  collisional_ionization_data(:,13, 7) = (/  241.4,1.,1.14E-09,0.2280,0.29 /)
+  collisional_ionization_data(:,13, 6) = (/  284.6,1.,8.00E-10,0.4170,0.16 /)
+  collisional_ionization_data(:,13, 5) = (/  390.2,1.,5.83E-10,0.4970,0.23 /)
+  collisional_ionization_data(:,13, 4) = (/  399.4,0.,4.93E-10,0.7060,0.16 /)
+  collisional_ionization_data(:,13, 3) = (/  442.0,1.,9.77E-11,0.2780,0.17 /)
+  collisional_ionization_data(:,13, 2) = (/ 2086.6,0.,3.94E-11,0.2860,0.36 /)
+  collisional_ionization_data(:,13, 1) = (/ 2304.1,1.,1.38E-11,0.8350,0.11 /)
+  collisional_ionization_data(:,14,14) = (/    8.2,1.,1.88E-07,0.3760,0.25 /)
+  collisional_ionization_data(:,14,13) = (/   16.4,1.,6.43E-08,0.6320,0.20 /)
+  collisional_ionization_data(:,14,12) = (/   33.5,1.,2.01E-08,0.4730,0.22 /)
+  collisional_ionization_data(:,14,11) = (/   54.0,1.,4.94E-09,0.1720,0.23 /)
+  collisional_ionization_data(:,14,10) = (/  166.8,1.,1.76E-09,0.1020,0.31 /)
+  collisional_ionization_data(:,14, 9) = (/  205.3,1.,1.74E-09,0.1800,0.29 /)
+  collisional_ionization_data(:,14, 8) = (/  246.5,1.,1.23E-09,0.5180,0.07 /)
+  collisional_ionization_data(:,14, 7) = (/  303.5,1.,8.27E-10,0.2390,0.28 /)
+  collisional_ionization_data(:,14, 6) = (/  351.1,1.,6.01E-10,0.3050,0.25 /)
+  collisional_ionization_data(:,14, 5) = (/  401.4,1.,4.65E-10,0.6660,0.04 /)
+  collisional_ionization_data(:,14, 4) = (/  476.4,1.,2.63E-10,0.6660,0.16 /)
+  collisional_ionization_data(:,14, 3) = (/  523.5,1.,1.18E-10,0.7340,0.16 /)
+  collisional_ionization_data(:,14, 2) = (/ 2437.7,0.,3.36E-11,0.3360,0.37 /)
+  collisional_ionization_data(:,14, 1) = (/ 2673.2,1.,1.19E-11,0.9890,0.08 /)
+  collisional_ionization_data(:,15,15) = (/   10.5,1.,1.99E-07,0.5350,0.24 /)
+  collisional_ionization_data(:,15,14) = (/   19.8,1.,5.88E-08,0.5370,0.21 /)
+  collisional_ionization_data(:,15,13) = (/   30.2,1.,2.96E-08,0.8650,0.16 /)
+  collisional_ionization_data(:,15,12) = (/   51.4,1.,1.01E-08,0.5460,0.20 /)
+  collisional_ionization_data(:,15,11) = (/   65.0,1.,2.36E-09,0.1920,0.17 /)
+  collisional_ionization_data(:,15,10) = (/  220.4,0.,6.66E-09,1.0000,0.18 /)
+  collisional_ionization_data(:,15, 9) = (/  263.2,1.,1.24E-09,0.2150,0.26 /)
+  collisional_ionization_data(:,15, 8) = (/  309.4,0.,2.27E-09,0.7340,0.23 /)
+  collisional_ionization_data(:,15, 7) = (/  371.7,1.,6.14E-10,0.2560,0.27 /)
+  collisional_ionization_data(:,15, 6) = (/  424.5,1.,4.69E-10,0.3420,0.23 /)
+  collisional_ionization_data(:,15, 5) = (/  479.6,0.,6.14E-10,0.3340,0.39 /)
+  collisional_ionization_data(:,15, 4) = (/  560.4,0.,3.22E-10,0.8500,0.12 /)
+  collisional_ionization_data(:,15, 3) = (/  611.9,1.,9.32E-11,0.7340,0.16 /)
+  collisional_ionization_data(:,15, 2) = (/ 2816.9,0.,3.79E-11,0.8050,0.22 /)
+  collisional_ionization_data(:,15, 1) = (/ 3069.9,1.,9.73E-12,0.9910,0.08 /)
+  collisional_ionization_data(:,16,16) = (/   10.4,1.,5.49E-08,0.1000,0.25 /)
+  collisional_ionization_data(:,16,15) = (/   23.3,1.,6.81E-08,0.6930,0.21 /)
+  collisional_ionization_data(:,16,14) = (/   34.8,1.,2.14E-08,0.3530,0.24 /)
+  collisional_ionization_data(:,16,13) = (/   47.3,1.,1.66E-08,1.0300,0.14 /)
+  collisional_ionization_data(:,16,12) = (/   72.6,1.,6.12E-09,0.5800,0.19 /)
+  collisional_ionization_data(:,16,11) = (/   88.1,1.,1.33E-09,0.0688,0.35 /)
+  collisional_ionization_data(:,16,10) = (/  280.9,0.,4.93E-09,1.1300,0.16 /)
+  collisional_ionization_data(:,16, 9) = (/  328.2,1.,8.73E-10,0.1930,0.28 /)
+  collisional_ionization_data(:,16, 8) = (/  379.1,0.,1.35E-09,0.4310,0.32 /)
+  collisional_ionization_data(:,16, 7) = (/  447.1,1.,4.59E-10,0.2420,0.28 /)
+  collisional_ionization_data(:,16, 6) = (/  504.8,1.,3.49E-10,0.3050,0.25 /)
+  collisional_ionization_data(:,16, 5) = (/  564.7,0.,5.23E-10,0.4280,0.35 /)
+  collisional_ionization_data(:,16, 4) = (/  651.6,0.,2.59E-10,0.8540,0.12 /)
+  collisional_ionization_data(:,16, 3) = (/  707.2,1.,7.50E-11,0.7340,0.16 /)
+  collisional_ionization_data(:,16, 2) = (/ 3223.9,0.,2.67E-11,0.5720,0.28 /)
+  collisional_ionization_data(:,16, 1) = (/ 3494.2,1.,6.32E-12,0.5850,0.17 /)
+  collisional_ionization_data(:,17,17) = (/   13.0,1.,1.69E-07,0.4300,0.24 /)
+  collisional_ionization_data(:,17,16) = (/   23.8,1.,6.96E-08,0.6700,0.20 /)
+  collisional_ionization_data(:,17,15) = (/   39.6,1.,3.40E-08,0.8650,0.18 /)
+  collisional_ionization_data(:,17,14) = (/   53.5,1.,1.10E-08,0.3280,0.25 /)
+  collisional_ionization_data(:,17,13) = (/   67.8,1.,1.11E-08,1.3700,0.10 /)
+  collisional_ionization_data(:,17,12) = (/   97.0,1.,3.17E-09,0.3300,0.24 /)
+  collisional_ionization_data(:,17,11) = (/  114.2,1.,1.01E-09,0.1960,0.16 /)
+  collisional_ionization_data(:,17,10) = (/  348.3,0.,2.11E-09,0.3130,0.37 /)
+  collisional_ionization_data(:,17, 9) = (/  400.1,1.,6.32E-10,0.1730,0.30 /)
+  collisional_ionization_data(:,17, 8) = (/  455.6,0.,9.48E-10,0.3440,0.36 /)
+  collisional_ionization_data(:,17, 7) = (/  529.3,1.,3.69E-10,0.2730,0.26 /)
+  collisional_ionization_data(:,17, 6) = (/  592.0,1.,2.85E-10,0.3430,0.23 /)
+  collisional_ionization_data(:,17, 5) = (/  656.7,0.,4.81E-10,0.6580,0.27 /)
+  collisional_ionization_data(:,17, 4) = (/  749.8,1.,1.31E-10,0.6230,0.16 /)
+  collisional_ionization_data(:,17, 3) = (/  809.4,1.,6.13E-11,0.7360,0.16 /)
+  collisional_ionization_data(:,17, 2) = (/ 3658.4,0.,1.90E-11,0.3790,0.36 /)
+  collisional_ionization_data(:,17, 1) = (/ 3946.3,1.,5.14E-12,0.5530,0.18 /)
+  collisional_ionization_data(:,18,18) = (/   15.8,1.,5.99E-08,0.1360,0.26 /)
+  collisional_ionization_data(:,18,17) = (/   27.6,1.,6.07E-08,0.5440,0.21 /)
+  collisional_ionization_data(:,18,16) = (/   40.9,1.,3.43E-08,0.8340,0.17 /)
+  collisional_ionization_data(:,18,15) = (/   52.3,0.,3.00E-08,1.0300,0.25 /)
+  collisional_ionization_data(:,18,14) = (/   75.0,1.,8.73E-09,0.3660,0.31 /)
+  collisional_ionization_data(:,18,13) = (/   91.0,1.,5.78E-09,0.3140,0.34 /)
+  collisional_ionization_data(:,18,12) = (/  124.3,1.,2.98E-09,0.7030,0.16 /)
+  collisional_ionization_data(:,18,11) = (/  143.5,1.,7.25E-10,0.2070,0.15 /)
+  collisional_ionization_data(:,18,10) = (/  422.4,1.,1.40E-09,0.6960,0.13 /)
+  collisional_ionization_data(:,18, 9) = (/  478.7,1.,4.78E-10,0.1640,0.31 /)
+  collisional_ionization_data(:,18, 8) = (/  539.0,0.,8.02E-10,0.4390,0.32 /)
+  collisional_ionization_data(:,18, 7) = (/  618.3,1.,2.88E-10,0.2590,0.27 /)
+  collisional_ionization_data(:,18, 6) = (/  686.1,1.,2.32E-10,0.3620,0.22 /)
+  collisional_ionization_data(:,18, 5) = (/  755.7,0.,3.33E-10,0.4120,0.36 /)
+  collisional_ionization_data(:,18, 4) = (/  854.8,1.,1.27E-10,0.9100,0.13 /)
+  collisional_ionization_data(:,18, 3) = (/  918.0,1.,5.21E-11,0.7810,0.15 /)
+  collisional_ionization_data(:,18, 2) = (/ 4120.7,0.,1.66E-11,0.4350,0.33 /)
+  collisional_ionization_data(:,18, 1) = (/ 4426.2,1.,4.32E-12,0.5540,0.18 /)
+  collisional_ionization_data(:,19,19) = (/    4.3,1.,2.02E-07,0.2720,0.31 /)
+  collisional_ionization_data(:,19,18) = (/   31.6,1.,4.01E-08,0.3710,0.22 /)
+  collisional_ionization_data(:,19,17) = (/   45.8,1.,1.50E-08,0.4330,0.21 /)
+  collisional_ionization_data(:,19,16) = (/   60.9,1.,1.94E-08,0.8890,0.16 /)
+  collisional_ionization_data(:,19,15) = (/   82.7,1.,6.95E-09,0.4940,0.18 /)
+  collisional_ionization_data(:,19,14) = (/   99.4,1.,4.11E-09,0.5400,0.17 /)
+  collisional_ionization_data(:,19,13) = (/  117.6,1.,2.23E-09,0.5190,0.16 /)
+  collisional_ionization_data(:,19,12) = (/  154.7,1.,2.15E-09,0.8280,0.14 /)
+  collisional_ionization_data(:,19,11) = (/  175.8,0.,1.61E-09,0.6420,0.13 /)
+  collisional_ionization_data(:,19,10) = (/  504.0,1.,1.07E-09,0.6950,0.13 /)
+  collisional_ionization_data(:,19, 9) = (/  564.7,1.,3.78E-10,0.1730,0.30 /)
+  collisional_ionization_data(:,19, 8) = (/  629.4,0.,6.24E-10,0.4180,0.33 /)
+  collisional_ionization_data(:,19, 7) = (/  714.6,1.,2.29E-10,0.2450,0.28 /)
+  collisional_ionization_data(:,19, 6) = (/  786.6,1.,1.86E-10,0.3440,0.23 /)
+  collisional_ionization_data(:,19, 5) = (/  861.1,0.,2.69E-10,0.3960,0.37 /)
+  collisional_ionization_data(:,19, 4) = (/  968.0,1.,1.06E-10,0.9120,0.13 /)
+  collisional_ionization_data(:,19, 3) = (/ 1053.4,1.,4.24E-11,0.7370,0.16 /)
+  collisional_ionization_data(:,19, 2) = (/ 4610.9,0.,1.38E-11,0.4160,0.34 /)
+  collisional_ionization_data(:,19, 1) = (/ 4934.1,1.,3.67E-12,0.5550,0.18 /)
+  collisional_ionization_data(:,20,20) = (/    6.1,0.,4.40E-07,0.8480,0.33 /)
+  collisional_ionization_data(:,20,19) = (/   11.9,0.,5.22E-08,0.1510,0.34 /)
+  collisional_ionization_data(:,20,18) = (/   50.9,1.,2.06E-08,0.4180,0.20 /)
+  collisional_ionization_data(:,20,17) = (/   67.3,1.,1.72E-08,0.6380,0.19 /)
+  collisional_ionization_data(:,20,16) = (/   84.5,1.,1.26E-08,1.0100,0.14 /)
+  collisional_ionization_data(:,20,15) = (/  108.8,1.,4.72E-09,0.5260,0.17 /)
+  collisional_ionization_data(:,20,14) = (/  127.2,1.,2.89E-09,0.5480,0.17 /)
+  collisional_ionization_data(:,20,13) = (/  147.2,1.,1.64E-09,0.5520,0.15 /)
+  collisional_ionization_data(:,20,12) = (/  188.3,1.,1.57E-09,0.7990,0.14 /)
+  collisional_ionization_data(:,20,11) = (/  211.3,1.,4.32E-10,0.2320,0.14 /)
+  collisional_ionization_data(:,20,10) = (/  591.9,0.,9.47E-10,0.3110,0.38 /)
+  collisional_ionization_data(:,20, 9) = (/  657.2,1.,2.98E-10,0.1630,0.31 /)
+  collisional_ionization_data(:,20, 8) = (/  726.6,0.,4.78E-10,0.3590,0.36 /)
+  collisional_ionization_data(:,20, 7) = (/  817.6,1.,1.86E-10,0.2440,0.28 /)
+  collisional_ionization_data(:,20, 6) = (/  894.5,1.,1.56E-10,0.3640,0.22 /)
+  collisional_ionization_data(:,20, 5) = (/  974.0,0.,2.16E-10,0.3570,0.39 /)
+  collisional_ionization_data(:,20, 4) = (/ 1087.0,1.,7.70E-11,0.6550,0.15 /)
+  collisional_ionization_data(:,20, 3) = (/ 1157.0,1.,3.58E-11,0.7360,0.16 /)
+  collisional_ionization_data(:,20, 2) = (/ 5128.9,0.,1.28E-11,0.5200,0.30 /)
+  collisional_ionization_data(:,20, 1) = (/ 5469.9,1.,3.08E-12,0.5280,0.19 /)
+  collisional_ionization_data(:,21,21) = (/    6.6,1.,3.16E-07,0.2040,0.28 /)
+  collisional_ionization_data(:,21,20) = (/   12.8,1.,8.61E-08,0.1810,0.25 /)
+  collisional_ionization_data(:,21,19) = (/   24.8,1.,5.08E-08,0.3570,0.24 /)
+  collisional_ionization_data(:,21,18) = (/   73.5,1.,1.00E-08,0.4530,0.15 /)
+  collisional_ionization_data(:,21,17) = (/   91.9,1.,6.76E-09,0.4600,0.15 /)
+  collisional_ionization_data(:,21,16) = (/  110.7,1.,5.27E-09,0.5610,0.17 /)
+  collisional_ionization_data(:,21,15) = (/  138.0,1.,3.40E-09,0.5600,0.16 /)
+  collisional_ionization_data(:,21,14) = (/  158.1,1.,2.18E-09,0.6120,0.15 /)
+  collisional_ionization_data(:,21,13) = (/  180.0,1.,1.26E-09,0.6100,0.14 /)
+  collisional_ionization_data(:,21,12) = (/  225.1,1.,1.24E-09,0.8520,0.13 /)
+  collisional_ionization_data(:,21,11) = (/  249.8,1.,3.62E-10,0.3490,0.05 /)
+  collisional_ionization_data(:,21,10) = (/  687.4,1.,5.52E-10,0.3750,0.28 /)
+  collisional_ionization_data(:,21, 9) = (/  756.7,1.,5.64E-10,0.8730,0.15 /)
+  collisional_ionization_data(:,21, 8) = (/  830.8,1.,4.50E-10,1.0500,0.13 /)
+  collisional_ionization_data(:,21, 7) = (/  927.5,1.,2.73E-10,0.8660,0.15 /)
+  collisional_ionization_data(:,21, 6) = (/ 1009.0,1.,1.56E-10,0.7150,0.17 /)
+  collisional_ionization_data(:,21, 5) = (/ 1094.0,0.,1.81E-10,1.1400,0.36 /)
+  collisional_ionization_data(:,21, 4) = (/ 1213.0,1.,4.29E-11,0.7840,0.15 /)
+  collisional_ionization_data(:,21, 3) = (/ 1288.0,0.,2.21E-11,0.0270,0.82 /)
+  collisional_ionization_data(:,21, 2) = (/ 5674.9,1.,4.51E-12,0.9180,0.04 /)
+  collisional_ionization_data(:,21, 1) = (/ 6033.8,0.,2.03E-12,0.0170,0.70 /)
+  collisional_ionization_data(:,22,22) = (/    6.8,1.,1.60E-07,0.3600,0.28 /)
+  collisional_ionization_data(:,22,21) = (/   13.6,0.,2.14E-07,0.8800,0.28 /)
+  collisional_ionization_data(:,22,20) = (/   27.5,1.,2.85E-08,0.2270,0.21 /)
+  collisional_ionization_data(:,22,19) = (/   43.3,1.,3.48E-08,0.3900,0.23 /)
+  collisional_ionization_data(:,22,18) = (/   99.3,1.,1.00E-08,0.5790,0.18 /)
+  collisional_ionization_data(:,22,17) = (/  119.5,1.,7.01E-09,0.6380,0.17 /)
+  collisional_ionization_data(:,22,16) = (/  140.8,1.,4.95E-09,0.7170,0.16 /)
+  collisional_ionization_data(:,22,15) = (/  170.4,1.,2.99E-09,0.6930,0.17 /)
+  collisional_ionization_data(:,22,14) = (/  192.1,1.,2.10E-09,0.7220,0.16 /)
+  collisional_ionization_data(:,22,13) = (/  215.9,1.,1.62E-09,0.7650,0.14 /)
+  collisional_ionization_data(:,22,12) = (/  265.0,1.,1.11E-09,0.8850,0.12 /)
+  collisional_ionization_data(:,22,11) = (/  291.5,0.,9.09E-10,0.9720,0.06 /)
+  collisional_ionization_data(:,22,10) = (/  787.8,1.,4.41E-10,0.3590,0.29 /)
+  collisional_ionization_data(:,22, 9) = (/  863.1,1.,4.39E-10,0.7810,0.17 /)
+  collisional_ionization_data(:,22, 8) = (/  941.9,1.,3.73E-10,1.0500,0.13 /)
+  collisional_ionization_data(:,22, 7) = (/ 1044.0,1.,2.28E-10,0.8580,0.15 /)
+  collisional_ionization_data(:,22, 6) = (/ 1131.0,1.,1.34E-10,0.7570,0.16 /)
+  collisional_ionization_data(:,22, 5) = (/ 1221.0,0.,1.55E-10,1.1500,0.36 /)
+  collisional_ionization_data(:,22, 4) = (/ 1346.0,1.,3.80E-11,0.8350,0.14 /)
+  collisional_ionization_data(:,22, 3) = (/ 1426.0,0.,1.89E-11,0.0280,0.82 /)
+  collisional_ionization_data(:,22, 2) = (/ 6249.1,1.,4.01E-12,0.9680,0.03 /)
+  collisional_ionization_data(:,22, 1) = (/ 6625.0,1.,1.62E-12,0.6570,0.14 /)
+  collisional_ionization_data(:,23,23) = (/    6.7,0.,8.82E-07,0.3590,0.32 /)
+  collisional_ionization_data(:,23,22) = (/   14.7,0.,3.11E-07,0.4320,0.29 /)
+  collisional_ionization_data(:,23,21) = (/   29.3,1.,3.50E-08,0.2470,0.25 /)
+  collisional_ionization_data(:,23,20) = (/   46.7,0.,5.32E-08,1.1100,0.16 /)
+  collisional_ionization_data(:,23,19) = (/   65.3,1.,8.98E-09,0.1400,0.37 /)
+  collisional_ionization_data(:,23,18) = (/  128.1,1.,5.87E-09,0.5170,0.17 /)
+  collisional_ionization_data(:,23,17) = (/  150.6,1.,5.11E-09,0.6790,0.16 /)
+  collisional_ionization_data(:,23,16) = (/  173.4,1.,3.71E-09,0.7610,0.15 /)
+  collisional_ionization_data(:,23,15) = (/  205.8,1.,2.24E-09,0.7110,0.17 /)
+  collisional_ionization_data(:,23,14) = (/  230.5,1.,1.65E-09,0.7640,0.15 /)
+  collisional_ionization_data(:,23,13) = (/  256.0,1.,1.26E-09,0.7620,0.14 /)
+  collisional_ionization_data(:,23,12) = (/  308.0,1.,8.86E-10,0.8860,0.12 /)
+  collisional_ionization_data(:,23,11) = (/  336.3,0.,3.89E-10,0.1420,0.39 /)
+  collisional_ionization_data(:,23,10) = (/  896.0,1.,3.80E-10,0.4090,0.27 /)
+  collisional_ionization_data(:,23, 9) = (/  976.0,0.,4.84E-10,0.1730,0.57 /)
+  collisional_ionization_data(:,23, 8) = (/ 1060.0,1.,2.49E-10,0.6500,0.14 /)
+  collisional_ionization_data(:,23, 7) = (/ 1168.0,0.,5.91E-10,1.6100,0.18 /)
+  collisional_ionization_data(:,23, 6) = (/ 1260.0,0.,5.02E-10,2.1200,0.15 /)
+  collisional_ionization_data(:,23, 5) = (/ 1355.0,1.,5.38E-11,0.1370,0.40 /)
+  collisional_ionization_data(:,23, 4) = (/ 1486.0,1.,5.56E-11,0.7080,0.10 /)
+  collisional_ionization_data(:,23, 3) = (/ 1571.0,0.,2.84E-11,0.0240,0.79 /)
+  collisional_ionization_data(:,23, 2) = (/ 6851.3,0.,2.54E-11,2.9200,0.09 /)
+  collisional_ionization_data(:,23, 1) = (/ 7246.1,0.,1.32E-11,3.5100,0.07 /)
+  collisional_ionization_data(:,24,24) = (/    6.8,1.,1.03E-07,0.2170,0.27 /)
+  collisional_ionization_data(:,24,23) = (/   16.5,0.,2.45E-07,0.3810,0.32 /)
+  collisional_ionization_data(:,24,22) = (/   31.0,0.,1.09E-07,0.5180,0.27 /)
+  collisional_ionization_data(:,24,21) = (/   49.1,1.,1.52E-08,0.1820,0.30 /)
+  collisional_ionization_data(:,24,20) = (/   69.5,0.,3.25E-08,1.3600,0.13 /)
+  collisional_ionization_data(:,24,19) = (/   90.6,1.,5.50E-09,0.1430,0.37 /)
+  collisional_ionization_data(:,24,18) = (/  160.2,1.,5.13E-09,0.6570,0.16 /)
+  collisional_ionization_data(:,24,17) = (/  184.7,1.,3.85E-09,0.7220,0.15 /)
+  collisional_ionization_data(:,24,16) = (/  209.3,1.,2.81E-09,0.7590,0.15 /)
+  collisional_ionization_data(:,24,15) = (/  244.4,1.,1.76E-09,0.7320,0.16 /)
+  collisional_ionization_data(:,24,14) = (/  271.0,1.,1.30E-09,0.7640,0.15 /)
+  collisional_ionization_data(:,24,13) = (/  298.0,1.,1.02E-09,0.8100,0.13 /)
+  collisional_ionization_data(:,24,12) = (/  354.8,1.,7.19E-10,0.8870,0.12 /)
+  collisional_ionization_data(:,24,11) = (/  384.2,1.,1.61E-10,0.1500,0.22 /)
+  collisional_ionization_data(:,24,10) = (/ 1011.0,1.,4.64E-10,0.9710,0.12 /)
+  collisional_ionization_data(:,24, 9) = (/ 1097.0,1.,3.31E-10,0.9240,0.14 /)
+  collisional_ionization_data(:,24, 8) = (/ 1185.0,1.,2.49E-10,0.9310,0.15 /)
+  collisional_ionization_data(:,24, 7) = (/ 1299.0,1.,1.68E-10,0.9100,0.14 /)
+  collisional_ionization_data(:,24, 6) = (/ 1396.0,1.,1.01E-10,0.8050,0.15 /)
+  collisional_ionization_data(:,24, 5) = (/ 1496.0,0.,1.17E-10,1.2100,0.35 /)
+  collisional_ionization_data(:,24, 4) = (/ 1634.0,1.,2.91E-11,0.8840,0.13 /)
+  collisional_ionization_data(:,24, 3) = (/ 1721.0,0.,1.45E-11,0.0350,0.80 /)
+  collisional_ionization_data(:,24, 2) = (/ 7482.0,1.,3.07E-12,0.9670,0.03 /)
+  collisional_ionization_data(:,24, 1) = (/ 7894.8,1.,1.46E-12,0.1830,0.39 /)
+  collisional_ionization_data(:,25,25) = (/    7.4,1.,8.56E-08,0.1320,0.26 /)
+  collisional_ionization_data(:,25,24) = (/   15.6,0.,1.18E-07,0.3590,0.19 /)
+  collisional_ionization_data(:,25,23) = (/   33.7,0.,8.54E-08,0.3970,0.32 /)
+  collisional_ionization_data(:,25,22) = (/   51.2,1.,1.80E-08,0.2720,0.18 /)
+  collisional_ionization_data(:,25,21) = (/   72.4,1.,8.22E-09,0.1610,0.32 /)
+  collisional_ionization_data(:,25,20) = (/   95.0,0.,2.15E-08,1.5400,0.11 /)
+  collisional_ionization_data(:,25,19) = (/  119.3,1.,3.65E-09,0.1470,0.37 /)
+  collisional_ionization_data(:,25,18) = (/  194.5,1.,3.91E-09,0.6990,0.15 /)
+  collisional_ionization_data(:,25,17) = (/  221.8,1.,2.92E-09,0.7190,0.15 /)
+  collisional_ionization_data(:,25,16) = (/  248.3,1.,2.23E-09,0.8060,0.14 /)
+  collisional_ionization_data(:,25,15) = (/  286.0,1.,1.39E-09,0.7350,0.16 /)
+  collisional_ionization_data(:,25,14) = (/  314.4,1.,1.04E-09,0.7610,0.15 /)
+  collisional_ionization_data(:,25,13) = (/  343.6,1.,8.28E-10,0.8090,0.13 /)
+  collisional_ionization_data(:,25,12) = (/  403.0,1.,5.60E-10,0.7870,0.14 /)
+  collisional_ionization_data(:,25,11) = (/  435.2,1.,1.52E-10,0.2990,0.08 /)
+  collisional_ionization_data(:,25,10) = (/ 1133.0,1.,4.03E-10,1.0400,0.11 /)
+  collisional_ionization_data(:,25, 9) = (/ 1244.0,1.,2.74E-10,0.9230,0.14 /)
+  collisional_ionization_data(:,25, 8) = (/ 1317.0,1.,2.18E-10,0.9900,0.14 /)
+  collisional_ionization_data(:,25, 7) = (/ 1437.0,1.,1.49E-10,0.9680,0.13 /)
+  collisional_ionization_data(:,25, 6) = (/ 1539.0,1.,8.70E-11,0.8020,0.15 /)
+  collisional_ionization_data(:,25, 5) = (/ 1644.0,0.,1.02E-10,1.2200,0.35 /)
+  collisional_ionization_data(:,25, 4) = (/ 1788.0,1.,2.54E-11,0.8830,0.13 /)
+  collisional_ionization_data(:,25, 3) = (/ 1880.0,0.,1.28E-11,0.0330,0.81 /)
+  collisional_ionization_data(:,25, 2) = (/ 8141.0,1.,2.77E-12,1.0100,0.02 /)
+  collisional_ionization_data(:,25, 1) = (/ 8571.9,1.,1.32E-12,0.2190,0.37 /)
+  collisional_ionization_data(:,26,26) = (/    7.9,0.,2.52E-07,0.7010,0.25 /)
+  collisional_ionization_data(:,26,25) = (/   16.2,1.,2.21E-08,0.0330,0.45 /)
+  collisional_ionization_data(:,26,24) = (/   30.6,0.,4.10E-08,0.3660,0.17 /)
+  collisional_ionization_data(:,26,23) = (/   54.8,0.,3.53E-08,0.2430,0.39 /)
+  collisional_ionization_data(:,26,22) = (/   75.0,1.,1.04E-08,0.2850,0.17 /)
+  collisional_ionization_data(:,26,21) = (/   99.0,1.,1.23E-08,0.4110,0.21 /)
+  collisional_ionization_data(:,26,20) = (/  125.0,1.,9.47E-09,0.4580,0.21 /)
+  collisional_ionization_data(:,26,19) = (/  151.1,1.,4.71E-09,0.2800,0.28 /)
+  collisional_ionization_data(:,26,18) = (/  233.6,1.,3.02E-09,0.6970,0.15 /)
+  collisional_ionization_data(:,26,17) = (/  262.1,1.,2.34E-09,0.7640,0.14 /)
+  collisional_ionization_data(:,26,16) = (/  290.0,1.,1.76E-09,0.8050,0.14 /)
+  collisional_ionization_data(:,26,15) = (/  331.0,1.,1.14E-09,0.7730,0.15 /)
+  collisional_ionization_data(:,26,14) = (/  361.0,1.,8.66E-10,0.8050,0.14 /)
+  collisional_ionization_data(:,26,13) = (/  392.0,1.,6.61E-10,0.7620,0.14 /)
+  collisional_ionization_data(:,26,12) = (/  457.0,1.,4.41E-10,0.6980,0.16 /)
+  collisional_ionization_data(:,26,11) = (/  489.3,1.,1.18E-10,0.2110,0.15 /)
+  collisional_ionization_data(:,26,10) = (/ 1262.0,1.,3.61E-10,1.1600,0.09 /)
+  collisional_ionization_data(:,26, 9) = (/ 1360.0,1.,2.45E-10,0.9780,0.13 /)
+  collisional_ionization_data(:,26, 8) = (/ 1470.0,1.,1.87E-10,0.9880,0.14 /)
+  collisional_ionization_data(:,26, 7) = (/ 1582.0,1.,1.33E-10,1.0300,0.12 /)
+  collisional_ionization_data(:,26, 6) = (/ 1690.0,1.,7.84E-11,0.8480,0.14 /)
+  collisional_ionization_data(:,26, 5) = (/ 1800.0,0.,8.90E-11,1.2000,0.35 /)
+  collisional_ionization_data(:,26, 4) = (/ 1960.0,1.,2.29E-11,0.9360,0.12 /)
+  collisional_ionization_data(:,26, 3) = (/ 2046.0,0.,1.12E-11,0.0340,0.81 /)
+  collisional_ionization_data(:,26, 2) = (/ 8828.0,1.,2.46E-12,1.0200,0.02 /)
+  collisional_ionization_data(:,26, 1) = (/ 9277.7,1.,9.79E-13,0.6640,0.14 /)
+
+END SUBROUTINE init_ci_rates
 
 FUNCTION coll_ion(T, dE, A, X, K, P) result(rate)
     use safe_math, only: safe_exp
@@ -103,8 +378,13 @@ FUNCTION coll_ion(T, dE, A, X, K, P) result(rate)
     real(dp) :: rate
     real(dp) :: U
 
+    rate = 0.d0
+
     ! Eqn 1 of Voronov 1997
     U = dE / (T * 8.61732814974056D-05)
+
+    if (U.gt.80.d0) return
+
     rate = A * (1.D0 + P * sqrt(U)) * U**K * safe_exp(-U) / (X + U)
 end FUNCTION coll_ion
 
@@ -113,58 +393,22 @@ FUNCTION collisional_ionization(T, ion, element_idx) result(rate)
     implicit none
     real(dp), intent(in) :: T
     integer, intent(in) :: ion, element_idx
-    real(dp) :: T5, f
+    real(dp) :: dE, A, X, K, P
     real(dp) :: rate
+    integer :: n_electron
 
     rate = 0.D0
 
-    select case (element_idx)
-      ! case (1) ! Hydrogen
-      !   T5 = T / 1D5
-      !   f = 1.D0 + sqrt(T5)
-      !   rate = 5.85D-11 * (sqrt(T) / f) * safe_exp(-157809.1D0 / T)
+    n_electron = element_idx - ion + 1
+    if (n_electron.gt.0) then 
+       dE = collisional_ionization_data(1, element_idx, n_electron)
+       P  = collisional_ionization_data(2, element_idx, n_electron)
+       A  = collisional_ionization_data(3, element_idx, n_electron)
+       X  = collisional_ionization_data(4, element_idx, n_electron)
+       K  = collisional_ionization_data(5, element_idx, n_electron)
 
-      ! case (2) ! Helium
-      !   T5 = T / 1.D5
-      !   f = 1.D0 + sqrt(T5)
-      !     select case (ion)
-      !       case (1) ! HeI -> HeII
-      !         rate = 2.38D-11 * (sqrt(T) / f) * safe_exp(-285335.4D0 / T)
-      !       case (2) ! HeII -> HeIII
-      !         rate = 5.68D-12 * (sqrt(T) / f) * safe_exp(-631515.0D0 / T)
-      !     end select
-
-      case (1) ! Hydrogen
-        rate = coll_ion(T, dE_hydrogen(ion), A_hydrogen(ion), X_hydrogen(ion), K_hydrogen(ion), P_hydrogen(ion))
-
-      case (2) ! Helium
-        rate = coll_ion(T, dE_helium(ion), A_helium(ion), X_helium(ion), K_helium(ion), P_helium(ion))
-
-      case (6) ! Carbon
-        rate = coll_ion(T, dE_carbon(ion), A_carbon(ion), X_carbon(ion), K_carbon(ion), P_carbon(ion))
-
-      case (7) ! Nitrogen
-        rate = coll_ion(T, dE_nitrogen(ion), A_nitrogen(ion), X_nitrogen(ion), K_nitrogen(ion), P_nitrogen(ion))
-
-      case (8) ! Oxygen
-        rate = coll_ion(T, dE_oxygen(ion), A_oxygen(ion), X_oxygen(ion), K_oxygen(ion), P_oxygen(ion))
-
-      case (10) ! Neon
-        rate = coll_ion(T, dE_neon(ion), A_neon(ion), X_neon(ion), K_neon(ion), P_neon(ion))
-
-      case (12) ! Magnesium
-        rate = coll_ion(T, dE_magnesium(ion), A_magnesium(ion), X_magnesium(ion), K_magnesium(ion), P_magnesium(ion))
-
-      case (14) ! Silicon
-        rate = coll_ion(T, dE_silicon(ion), A_silicon(ion), X_silicon(ion), K_silicon(ion), P_silicon(ion))
-
-      case (16) ! Sulfur
-        rate = coll_ion(T, dE_sulfur(ion), A_sulfur(ion), X_sulfur(ion), K_sulfur(ion), P_sulfur(ion))
-
-      case (26) ! Iron
-        rate = coll_ion(T, dE_iron(ion), A_iron(ion), X_iron(ion), K_iron(ion), P_iron(ion))
-
-    end select
+       rate = coll_ion(T, dE, A, X, K, P)
+    end if
 
     rate = MAX(rate,1.d-100)
 

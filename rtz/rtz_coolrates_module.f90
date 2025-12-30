@@ -1728,12 +1728,20 @@ FUNCTION cosmic_ray_heating(xe, n_HI, n_HeI, n_H2, ne, xi_h_cr, &
 
           ! This is the secondary heating term from induced UV emission
           ! Only happens for the ground state
-            if (j .eq. 1) then
-                rate = rate + ( element_number_densities(i) * x_ion & 
-                                * cosmic_ray_ionization_rates_induced_UV_heat(i) & 
-                                * cosmic_ray_ionization_rates_induced_UV(i) * EV_2_ERG & 
-                                * induced_UV_heat_scale_fac ) ! erg/s/cm^3
-            end if
+          if (j .eq. 1) then
+             rate = rate + ( element_number_densities(i) * x_ion & 
+                         * cosmic_ray_ionization_rates_induced_UV_heat(i) & 
+                         * cosmic_ray_ionization_rates_induced_UV(i) * EV_2_ERG & 
+                         * induced_UV_heat_scale_fac ) ! erg/s/cm^3
+          end if
+
+          ! Deal with Ca+ separately
+          if (i.eq.20 .and. j.eq.2) then 
+             rate = rate + ( element_number_densities(i) * x_ion & 
+                         * cosmic_ray_ionization_rates_induced_UV_heat_Ca_plus & 
+                         * cosmic_ray_ionization_rates_induced_UV_Ca_plus * EV_2_ERG & 
+                         * induced_UV_heat_scale_fac ) ! erg/s/cm^3
+          end if
 
        end do ! END LOOP OVER IONS
 
@@ -1975,15 +1983,19 @@ FUNCTION CT_heat_cool(T, element_number_densities, element_ion_fractions) result
 
 END FUNCTION CT_heat_cool
 
-FUNCTION local_photoheating(dNp, element_number_densities, element_ion_fractions) result(rate)
+FUNCTION local_photoheating(dNp, x_e, element_number_densities, element_ion_fractions) result(rate)
     ! Heating due to photoionization from the local radiation field
     use rtz_module, only: elements, n_elements
-    use rt_parameters, only: nGroups, PHrate
+    use rt_parameters, only: nGroups, PHrate, signc, rtz_include_secondary_ionizations
+    use constants, only: eV2erg
+    use secondary_ionization_module
     implicit none
+    real(dp), intent(in):: x_e
     real(dp), intent(in):: element_number_densities(27)
     real(dp), intent(in):: element_ion_fractions(27,27)
     real(dp), dimension(nGroups), intent(in):: dNp
     real(dp):: rate
+    real(dp):: secondary_reduction_factor, E_0
     integer:: ii,jj,kk
 
     rate = 0.d0
@@ -1991,8 +2003,15 @@ FUNCTION local_photoheating(dNp, element_number_densities, element_ion_fractions
        if (elements(ii)%atomic_number.gt.0) then
           do jj=1,elements(ii)%n_ions - 1
              do kk=1,nGroups
+                if (rtz_include_secondary_ionizations) then
+                   E_0 = (PHrate(kk,ii,jj) / (signc(kk,ii,jj)+1.d-40)) / eV2erg ! eV
+                   secondary_reduction_factor = secondary_ionization_fracs(E_0,x_e,0)
+                else
+                   secondary_reduction_factor= 1.d0
+                end if
                 rate = rate + dNp(kk) * element_number_densities(ii) &
-                       * element_ion_fractions(ii,jj) * PHrate(kk,ii,jj)
+                       * element_ion_fractions(ii,jj) * PHrate(kk,ii,jj) &
+                       * secondary_reduction_factor
              end do
           end do
        end if
@@ -2388,7 +2407,7 @@ SUBROUTINE all_cooling(T, ne, aexp, element_number_densities, element_ion_fracti
     
     if (rt_advect) then
        ! Photoheating from the local radiation field
-       photoheating = local_photoheating(dNp, element_number_densities, element_ion_fractions)
+       photoheating = local_photoheating(dNp, xe, element_number_densities, element_ion_fractions)
 
        ! Save cooling rates
        saved_cooling_rates(save_cooling_counter) = photoheating; saved_cooling_rates_names(save_cooling_counter) = 'heat_PH'; save_cooling_counter = save_cooling_counter + 1
@@ -2398,8 +2417,6 @@ SUBROUTINE all_cooling(T, ne, aexp, element_number_densities, element_ion_fracti
 
        ! Save cooling rates
        saved_cooling_rates(save_cooling_counter) = compton_xray_heating; saved_cooling_rates_names(save_cooling_counter) = 'heat_CXR'; save_cooling_counter = save_cooling_counter + 1
-
-       if (dNp(1).gt.1.d-10) write(*,*) "hrs",compton_xray_heating, photoheating
     end if
 
     !////////////////////////////////////////////////////
@@ -2408,9 +2425,11 @@ SUBROUTINE all_cooling(T, ne, aexp, element_number_densities, element_ion_fracti
     
     !!!!!! Sum all of the cooling rates
     total_cooling = total_primordial_cooling + dust_cooling + high_T_metal_cooling + total_fine_structure 
+    
 #ifdef CO
     total_cooling = total_cooling + CO_cooling
 #endif
+    ! write(*,*) "COOL",total_primordial_cooling, dust_cooling, high_T_metal_cooling, total_fine_structure, CO_cooling
 
     !!!!!! Sum all of the heating rates
     total_heating = photoelectric_heat + uvb_photoheat_G0
@@ -2435,6 +2454,8 @@ SUBROUTINE all_cooling(T, ne, aexp, element_number_densities, element_ion_fracti
        total_heating = total_heating + photoheating
        total_heating = total_heating + compton_xray_heating
     end if
+
+    ! write(*,*) "HEAT",photoelectric_heat, uvb_photoheat_G0, cosmic_ray_heat, charge_transfer_heat_cool, uvb_photoheat, h2_heat
 
     rate = total_heating - total_cooling
 

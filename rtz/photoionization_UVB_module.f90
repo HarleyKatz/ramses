@@ -17,9 +17,13 @@ module photoionization_UVB_module
   real(dp):: HM12_UVB_nitrogen(N_UVB_POINTS,7,2)
   real(dp):: HM12_UVB_oxygen(N_UVB_POINTS,8,2)
   real(dp):: HM12_UVB_neon(N_UVB_POINTS,10,2)
+  real(dp):: HM12_UVB_sodium(N_UVB_POINTS,11,2)
   real(dp):: HM12_UVB_magnesium(N_UVB_POINTS,12,2)
+  real(dp):: HM12_UVB_aluminum(N_UVB_POINTS,13,2)
   real(dp):: HM12_UVB_silicon(N_UVB_POINTS,14,2)
   real(dp):: HM12_UVB_sulfur(N_UVB_POINTS,16,2)
+  real(dp):: HM12_UVB_argon(N_UVB_POINTS,18,2)
+  real(dp):: HM12_UVB_calcium(N_UVB_POINTS,20,2)
   real(dp):: HM12_UVB_iron(N_UVB_POINTS,26,2)
 
   ! Array that holds the UVB for each ion at a given redshift
@@ -203,7 +207,33 @@ subroutine load_UVB_data()
         if (ios /= 0) exit
     end do
     close(unit_num)
+
+    ! Sodium photoionization
+    open(newunit=unit_num, file='./data/HM12/sodium_pi.dat', status='old', action='read', iostat=ios)
+    if (ios /= 0) then
+        write(*,*) 'Error: Could not open Sodium UVB file'
+        return
+    end if
     
+    do i = 1, N_UVB_POINTS
+        read(unit_num, *, iostat=ios) HM12_UVB_sodium(i, :, 1)
+        if (ios /= 0) exit
+    end do
+    close(unit_num)
+    
+    ! Sodium photoheating
+    open(newunit=unit_num, file='./data/HM12/sodium_ph.dat', status='old', action='read', iostat=ios)
+    if (ios /= 0) then
+        write(*,*) 'Error: Could not open Sodium UVB heat file'
+        return
+    end if
+    
+    do i = 1, N_UVB_POINTS
+        read(unit_num, *, iostat=ios) HM12_UVB_sodium(i, :, 2)
+        if (ios /= 0) exit
+    end do
+    close(unit_num)
+
     ! Magnesium photoionization
     open(newunit=unit_num, file='./data/HM12/magnesium_pi.dat', status='old', action='read', iostat=ios)
     if (ios /= 0) then
@@ -230,6 +260,32 @@ subroutine load_UVB_data()
     end do
     close(unit_num)
     
+    ! Aluminum photoionization
+    open(newunit=unit_num, file='./data/HM12/aluminum_pi.dat', status='old', action='read', iostat=ios)
+    if (ios /= 0) then
+        write(*,*) 'Error: Could not open Aluminum UVB file'
+        return
+    end if
+    
+    do i = 1, N_UVB_POINTS
+        read(unit_num, *, iostat=ios) HM12_UVB_aluminum(i, :, 1)
+        if (ios /= 0) exit
+    end do
+    close(unit_num)
+    
+    ! Neon photoheating
+    open(newunit=unit_num, file='./data/HM12/aluminum_ph.dat', status='old', action='read', iostat=ios)
+    if (ios /= 0) then
+        write(*,*) 'Error: Could not open Aluminum UVB heat file'
+        return
+    end if
+    
+    do i = 1, N_UVB_POINTS
+        read(unit_num, *, iostat=ios) HM12_UVB_aluminum(i, :, 2)
+        if (ios /= 0) exit
+    end do
+    close(unit_num)
+
     ! Silicon photoionization
     open(newunit=unit_num, file='./data/HM12/silicon_pi.dat', status='old', action='read', iostat=ios)
     if (ios /= 0) then
@@ -282,6 +338,58 @@ subroutine load_UVB_data()
     end do
     close(unit_num)
     
+    ! Argon photoionization
+    open(newunit=unit_num, file='./data/HM12/argon_pi.dat', status='old', action='read', iostat=ios)
+    if (ios /= 0) then
+        write(*,*) 'Error: Could not open Argon UVB file'
+        return
+    end if
+    
+    do i = 1, N_UVB_POINTS
+        read(unit_num, *, iostat=ios) HM12_UVB_argon(i, :, 1)
+        if (ios /= 0) exit
+    end do
+    close(unit_num)
+    
+    ! Argon photoheating
+    open(newunit=unit_num, file='./data/HM12/argon_ph.dat', status='old', action='read', iostat=ios)
+    if (ios /= 0) then
+        write(*,*) 'Error: Could not open Argon UVB heat file'
+        return
+    end if
+    
+    do i = 1, N_UVB_POINTS
+        read(unit_num, *, iostat=ios) HM12_UVB_argon(i, :, 2)
+        if (ios /= 0) exit
+    end do
+    close(unit_num)
+
+    ! Calcium photoionization
+    open(newunit=unit_num, file='./data/HM12/calcium_pi.dat', status='old', action='read', iostat=ios)
+    if (ios /= 0) then
+        write(*,*) 'Error: Could not open Calcium UVB file'
+        return
+    end if
+    
+    do i = 1, N_UVB_POINTS
+        read(unit_num, *, iostat=ios) HM12_UVB_calcium(i, :, 1)
+        if (ios /= 0) exit
+    end do
+    close(unit_num)
+    
+    ! Calcium photoheating
+    open(newunit=unit_num, file='./data/HM12/calcium_ph.dat', status='old', action='read', iostat=ios)
+    if (ios /= 0) then
+        write(*,*) 'Error: Could not open Calcium UVB heat file'
+        return
+    end if
+    
+    do i = 1, N_UVB_POINTS
+        read(unit_num, *, iostat=ios) HM12_UVB_calcium(i, :, 2)
+        if (ios /= 0) exit
+    end do
+    close(unit_num)
+
     ! Iron photoionization
     open(newunit=unit_num, file='./data/HM12/iron_pi.dat', status='old', action='read', iostat=ios)
     if (ios /= 0) then
@@ -361,9 +469,17 @@ subroutine update_UVB(redshift)
                   HM12_UVB_z(10,j,1)  = (scale_low * HM12_UVB_neon(i,j,1))  + (scale_high * HM12_UVB_neon(i+1,j,1))
                   HM12_UVB_z(10,j,2)  = (scale_low * HM12_UVB_neon(i,j,2))  + (scale_high * HM12_UVB_neon(i+1,j,2))                
                end if
+               if (j.lt.12) then
+                  HM12_UVB_z(11,j,1)  = (scale_low * HM12_UVB_sodium(i,j,1))  + (scale_high * HM12_UVB_sodium(i+1,j,1))
+                  HM12_UVB_z(11,j,2)  = (scale_low * HM12_UVB_sodium(i,j,2))  + (scale_high * HM12_UVB_sodium(i+1,j,2))
+               end if
                if (j.lt.13) then
                   HM12_UVB_z(12,j,1)  = (scale_low * HM12_UVB_magnesium(i,j,1))  + (scale_high * HM12_UVB_magnesium(i+1,j,1))
                   HM12_UVB_z(12,j,2)  = (scale_low * HM12_UVB_magnesium(i,j,2))  + (scale_high * HM12_UVB_magnesium(i+1,j,2))
+               end if
+               if (j.lt.14) then
+                  HM12_UVB_z(13,j,1)  = (scale_low * HM12_UVB_aluminum(i,j,1))  + (scale_high * HM12_UVB_aluminum(i+1,j,1))
+                  HM12_UVB_z(13,j,2)  = (scale_low * HM12_UVB_aluminum(i,j,2))  + (scale_high * HM12_UVB_aluminum(i+1,j,2))
                end if
                if (j.lt.15) then
                   HM12_UVB_z(14,j,1)  = (scale_low * HM12_UVB_silicon(i,j,1))  + (scale_high * HM12_UVB_silicon(i+1,j,1))
@@ -373,7 +489,15 @@ subroutine update_UVB(redshift)
                   HM12_UVB_z(16,j,1)  = (scale_low * HM12_UVB_sulfur(i,j,1))  + (scale_high * HM12_UVB_sulfur(i+1,j,1))
                   HM12_UVB_z(16,j,2)  = (scale_low * HM12_UVB_sulfur(i,j,2))  + (scale_high * HM12_UVB_sulfur(i+1,j,2))
                end if
-               if (j.lt.7) then
+               if (j.lt.19) then
+                  HM12_UVB_z(18,j,1)  = (scale_low * HM12_UVB_argon(i,j,1))  + (scale_high * HM12_UVB_argon(i+1,j,1))
+                  HM12_UVB_z(18,j,2)  = (scale_low * HM12_UVB_argon(i,j,2))  + (scale_high * HM12_UVB_argon(i+1,j,2))
+               end if
+               if (j.lt.21) then
+                  HM12_UVB_z(20,j,1)  = (scale_low * HM12_UVB_calcium(i,j,1))  + (scale_high * HM12_UVB_calcium(i+1,j,1))
+                  HM12_UVB_z(20,j,2)  = (scale_low * HM12_UVB_calcium(i,j,2))  + (scale_high * HM12_UVB_calcium(i+1,j,2))
+               end if
+               if (j.lt.27) then
                   HM12_UVB_z(26,j,1)  = (scale_low * HM12_UVB_iron(i,j,1))  + (scale_high * HM12_UVB_iron(i+1,j,1))
                   HM12_UVB_z(26,j,2)  = (scale_low * HM12_UVB_iron(i,j,2))  + (scale_high * HM12_UVB_iron(i+1,j,2))
                end if

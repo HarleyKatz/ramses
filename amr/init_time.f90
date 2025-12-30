@@ -16,6 +16,7 @@ subroutine init_time
   use rtz_coolrates_module, only: initialize_high_temperature_metal_cooling, initialize_fine_structure_tables
   use metal_yields_module, only: initialize_SN_yields
   use molecules_module, only: initialize_SCO_table
+  use collisional_ionization_module, only: init_ci_rates
 #else
   use rt_cooling_module
 #endif
@@ -323,6 +324,9 @@ subroutine init_time
 
 #ifdef RTZ
   ! If we are running with RTZ than we have numerous other initializations
+
+  ! Initialize collisional ionization data
+  call init_ci_rates()
 
   ! Initialize cosmic ray data
   call initialize_cr_rates()

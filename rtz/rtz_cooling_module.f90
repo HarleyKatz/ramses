@@ -208,7 +208,7 @@ SUBROUTINE rtz_solve_cooling(T2, aexp, xion, nElement, nCO, &
             !!! USE FOR EQM TESTS WITH COOLING AT CONSTANT RHO
             ! Interpolate over density
             nElement(1:n_elements,1:ncell)  = 0.d0  ! Initialize to zero
-            nElement(1,1:ncell)  = 10.d0**(((5.d0 - (-3.d0)) * (real(i_interp,dp) - 1.d0)/(300.d0-1.d0)) + (-3.d0))   
+            nElement(1,1:ncell)  = 10.d0**(((8.d0 - (-3.d0)) * (real(i_interp,dp) - 1.d0)/(300.d0-1.d0)) + (-3.d0))   
             nElement(2,1:ncell)  = nElement(1,1:ncell) * 8.51d-02 ! Helium
             nElement(6,1:ncell)  = nElement(1,1:ncell) * 2.69d-04 * z_ave ! Carbon
             nElement(7,1:ncell)  = nElement(1,1:ncell) * 6.76d-05 * z_ave ! Nitrogen
@@ -221,7 +221,7 @@ SUBROUTINE rtz_solve_cooling(T2, aexp, xion, nElement, nCO, &
             nCO(1:ncell) = 0.0 ! CO
          end if
 
-         tleft(1:ncell) = 1.d40             ! Set to an arbitrarily large number
+         tleft(1:ncell) = 1.d100             ! Set to an arbitrarily large number
          ddt(1:ncell) = 10000.d0 * 365.25d0 * 60.d0 * 60.d0 ! First guess at sub-timestep lengths
 
          do i=1,ncell
@@ -366,34 +366,6 @@ SUBROUTINE rtz_solve_cooling(T2, aexp, xion, nElement, nCO, &
          ! Make sure the ionization fractions don't go below the min or max
          xion(1:n_elements,1:n_elements,i) = MIN(MAX(xion(1:n_elements,1:n_elements,i), x_MIN),1d0)
 
-         ! Loop over each element and ensure that the ionization fractions
-         ! sum to 1
-         ! do iElement=1,n_elements
-         !    ! Check if we are actually using that element
-         !    if (elements(iElement)%atomic_number .gt. 0) then
-         !       ! REDUCE SO THAT IONIZATION FRACTIONS SUM TO 1
-         !       ion_fracs = elements(iElement)%n_ions + elements(iElement)%n_mol
-
-         !       ! New Method
-         !       current_mass_frac = sum(xion(iElement,2:ion_fracs,i))
-         !       xion(iElement,1,i) = 0.d0
-         !       if (current_mass_frac.ge.0.d0 .and. current_mass_frac.le.1.d0) then
-         !          xion(iElement,1,i) = 1.d0 - current_mass_frac
-         !       else if (current_mass_frac.gt.1.d0) then
-         !          do iIon=2,ion_fracs
-         !             xion(iElement,iIon,i) = xion(iElement,iIon,i) + ((1.d0 - current_mass_frac) * (xion(iElement,iIon,i) / current_mass_frac))
-         !          end do
-         !       else 
-         !          write(*,*) "NEGATIVE ION FRACTIONS...BIG PROBLEM"
-         !       end if
-
-         !       ! Old Method
-         !       ! current_mass_frac = sum(xion(iElement,1:ion_fracs,i))
-         !       ! do iIon=1,ion_fracs
-         !       !    xion(iElement,iIon,i) = xion(iElement,iIon,i) + ((1.d0 - current_mass_frac) * (xion(iElement,iIon,i) / current_mass_frac))
-         !       ! end do
-         !    end if
-         ! end do
 #ifdef RT
          do ig=1,nGroups
             Np(ig,i) = MAX(smallNp, Np(ig,i))
@@ -487,6 +459,7 @@ contains
     use cosmic_ray_ionization_module
     use molecules_module
     use auger_ionization_module
+    use secondary_ionization_module
     use rtz_coolrates_module, only: all_cooling
     implicit none
     integer, intent(in):: icell
@@ -527,8 +500,8 @@ contains
 #endif
     real(dp),dimension(1:27,10):: saved_rates
     real(dp),dimension(1:27,1:10,1:NGROUPS)::auger_yields
-    real(dp)::loc_auger_prob
-    integer::i_a
+    real(dp)::loc_auger_prob, E_bar_electron, fm_sif, gamma_secondary
+    integer::i_a,iEl_2,iI_2
     !-----------------------------------------------------------------------
 
     ! RTZ variable initialization
@@ -767,7 +740,7 @@ contains
      
        fracMax=MAX(fracMax,dUU)
        if(dUU .gt. 1.) then                                     ! 10% rule
-         !  write(*,*) "Broken Temperature", T2(icell), dT2, ddt(icell)/1.d12, Crate
+         !  write(*,*) "Broken Temperature", T2(icell), nH(icell), dT2, ddt(icell)/(365.25d0*24.d0*60.d0*60.d0), Crate, loopcnt, dUU
           dt_rec = 0.9d0 * ddt(icell) / sqrt(2.d0+fracMax)
           dt_rec = min(dt_rec,0.5d0*ddt(icell))
           code=3 ; RETURN
@@ -861,9 +834,9 @@ contains
        if (rtz_include_photoionization.and.rt_advect) then
           do igroup=1,nGroups
              if (isLW(igroup).eq.1) then
-                de_H2 = de_H2 + (dXion(1,3) * SUM(signc(igroup,1,3) * dNp * f_shd))
+                de_H2 = de_H2 + (SUM(signc(igroup,1,3) * dNp * f_shd))
              else
-                de_H2 = de_H2 + (dXion(1,3) * SUM(signc(igroup,1,3) * dNp))
+                de_H2 = de_H2 + (SUM(signc(igroup,1,3) * dNp))
              end if  
           end do
        end if
@@ -1068,6 +1041,11 @@ contains
                if (iIon.eq.2) then 
                   cr = cr + (cosmic_ray_ionization_rates_induced_UV(iElement) * cosmic_ray_scale_factor * dXion(iElement,iIon-1))
                end if
+
+               ! Handle Ca+ separately
+               if (iElement.eq.20 .and. iIon.eq.3) then
+                  cr = cr + (cosmic_ray_ionization_rates_induced_UV_Ca_plus * cosmic_ray_scale_factor * dXion(iElement,iIon-1))
+               end if 
              end if
 
              ! Recombination on dust from the more excited state
@@ -1082,18 +1060,60 @@ contains
              ! Photoionization of less excited state from the local radiation field
              if (rtz_include_photoionization.and.rt_advect) then
                 if (iIon .gt. 1) then 
-                   if (rtz_include_auger_ionization .and. iElement.gt.2) then 
+                   if (rtz_include_auger_ionization) then 
                       do igroup=1,nGroups ! Loop over groups
-                         do i_a = iIon-1,1,-1 ! Loop over lesser ions
-                            if (iIon - i_a .le. 10) then 
-                               loc_auger_prob = auger_yields(i_a,iIon - i_a,igroup)
-                               cr = cr + (dXion(iElement,iIon-1) * signc(igroup,iElement,iIon-1)*dNp(igroup)) * loc_auger_prob
-                            end if
-                         end do ! End loop over lesser ions
-                     end do ! End loop over groups
+                         if (iElement.gt.2 .and. isXR(igroup).eq.1) then 
+                            do i_a = iIon-1,1,-1 ! Loop over lesser ions
+                               if (iIon - i_a .le. 10) then 
+                                  loc_auger_prob = auger_yields(i_a,iIon - i_a,igroup)
+                                  cr = cr + (dXion(iElement,i_a) * signc(igroup,iElement,iIon-1)*dNp(igroup)) * loc_auger_prob
+                               end if
+                            end do ! End loop over lesser ions
+                         else
+                            cr = cr + (dXion(iElement,iIon-1) * (signc(igroup,iElement,iIon-1)*dNp(igroup)))
+                         end if
+                      end do ! End loop over groups
                    else
                       cr = cr + (dXion(iElement,iIon-1) * SUM(signc(:,iElement,iIon-1)*dNp))
                    end if
+
+                   ! Whether to include secondary ionizations from fast-moving electrons
+                   if (rtz_include_secondary_ionizations) then 
+                      ! We do this only for HI and HeI
+                      if (iElement.eq.1 .or. iElement.eq.2) then 
+                         if (iIon.eq.1) then 
+                            gamma_secondary = 0.d0
+                            ! Need to loop over every element and every ion again here
+                            do iEl_2 = 1,n_elements ! Loop over all elements
+                               if (elements(iEl_2)%atomic_number > 0) then
+                                  if (nElement_dep(iEl_2)/nElement_dep(1).le.1e-10) then
+                                     cycle
+                                  end if
+
+                                  do iI_2 = 1,elements(iEl_2)%n_ions-1 ! Loop over all ions (except the last)
+                                     do iGroup=1,nGroups ! Loop over photon groups
+                                        ! First compute the average excess energy per electron
+                                        ! Note sometimes the cross section is 0 and so is the PHrate so we add a small amount to the 
+                                        ! cross section to avoid getting a NaN.
+                                        E_bar_electron = PHrate(igroup,iEl_2,iI_2) / (signc(igroup,iEl_2,iI_2)+1.d-40)
+                                        E_bar_electron = E_bar_electron / eV2erg ! convert to eV
+
+                                        ! Now calculate what percentage of the energy goes into ionization
+                                        fm_sif = secondary_ionization_fracs(E_bar_electron,xe,iElement)
+
+                                        ! Number of ionizations / cm^3 / s --> Divide by n_Element to get ionization / s
+                                        gamma_secondary = gamma_secondary + ((nElement_dep(iEl_2) * dXion(iEl_2,iI_2) * signc(igroup,iEl_2,iI_2) * dNp(igroup) * fm_sif * E_bar_electron / ionEvs(iElement,iIon)) / nElement_dep(iElement))
+
+                                     end do ! End loop over groups
+                                  end do ! End loop over ions
+                               end if
+                            end do ! End loop over elements
+
+                            ! Update the creation rate
+                            cr = cr + (dXion(iElement,iIon-1) * gamma_secondary)
+                         end if
+                      end if
+                   end if ! End secondary ionizations
                 end if
              end if
 #endif
@@ -1148,6 +1168,12 @@ contains
                if (iIon .eq. 1) then 
                   de = de + (cosmic_ray_ionization_rates_induced_UV(iElement) * cosmic_ray_scale_factor)
                end if
+
+               ! Handle Ca+ separately
+               if (iElement.eq.20 .and. iIon.eq.2) then
+                  de = de + (cosmic_ray_ionization_rates_induced_UV_Ca_plus * cosmic_ray_scale_factor)
+               end if 
+
              end if
             
              ! Recombination on dust
@@ -1162,7 +1188,45 @@ contains
              ! Photoionization  from the local radiation field
              if (rtz_include_photoionization.and.rt_advect) then
                 if (iIon .lt. n_ions) then 
-                   de = de + (dXion(iElement,iIon) * SUM(signc(:,iElement,iIon)*dNp))
+                   de = de + SUM(signc(:,iElement,iIon)*dNp)
+
+                   ! Whether to include secondary ionizations from fast-moving electrons
+                   if (rtz_include_secondary_ionizations) then 
+                      ! We do this only for HI and HeI
+                      if (iElement.eq.1 .or. iElement.eq.2) then 
+                         if (iIon.eq.1) then 
+                            gamma_secondary = 0.d0
+                            ! Need to loop over every element and every ion again here
+                            do iEl_2 = 1,n_elements ! Loop over all elements
+                               if (elements(iEl_2)%atomic_number > 0) then
+                                  if (nElement_dep(iEl_2)/nElement_dep(1).le.1e-10) then
+                                     cycle
+                                  end if
+
+                                  do iI_2 = 1,elements(iEl_2)%n_ions-1 ! Loop over all ions (except the last)
+                                     do iGroup=1,nGroups ! Loop over photon groups
+                                        ! First compute the average excess energy per electron
+                                        ! Note sometimes the cross section is 0 and so is the PHrate so we add a small amount to the 
+                                        ! cross section to avoid getting a NaN.
+                                        E_bar_electron = PHrate(igroup,iEl_2,iI_2) / (signc(igroup,iEl_2,iI_2)+1.d-40)
+                                        E_bar_electron = E_bar_electron / eV2erg ! convert to eV
+
+                                        ! Now calculate what percentage of the energy goes into ionization
+                                        fm_sif = secondary_ionization_fracs(E_bar_electron,xe,iElement)
+
+                                        ! Number of ionizations / cm^3 / s --> Divide by n_Element to get ionization / s
+                                        gamma_secondary = gamma_secondary + ((nElement_dep(iEl_2) * dXion(iEl_2,iI_2) * signc(igroup,iEl_2,iI_2) * dNp(igroup) * fm_sif * E_bar_electron / ionEvs(iElement,iIon)) / nElement_dep(iElement))
+
+                                     end do ! End loop over groups
+                                  end do ! End loop over ions
+                               end if
+                            end do ! End loop over elements
+
+                            ! Update the destruction rate
+                            de = de + gamma_secondary
+                         end if
+                      end if
+                   end if ! End secondary ionizations
                 end if
              end if
 #endif
@@ -1312,8 +1376,10 @@ contains
     dt_rec = 0.9d0 * ddt(icell) / ((0.07d0 + fracMax)**0.3d0)
     dt_rec = min(dt_rec,2.*ddt(icell))
     dt_rec = min(dt_rec,rtz_max_cool_timestep)
-   !  dt_rec = min(dt_rec,min(rtz_max_cool_timestep,rtz_max_cool_timestep/nElement(1,icell)))
-   !  write(*,*) TK,nElement(1,icell),ddt(icell)/(365.25*24.*60.*60.),dt_rec/(365.25*24.*60.*60.),fracMax,xion(14,1,icell),xion(14,2,icell)
+    ! Don't let timestep go above 100 years in very dense gas!!!
+    if (nH(icell).ge.8.d4) then 
+       dt_rec = min(dt_rec,100.d0 * 365.25d0 * 24.d0 * 60.d0 * 60.d0 * 1.d5 / nH(icell))
+    end if
     dt_ok = .true.
     code=0
 
@@ -1512,7 +1578,7 @@ SUBROUTINE rtz_updateRTGroups_CoolConstants(ilevel)
            do iI = 1,elements(iE)%n_ions-1
               PHrate(iP,iE,iI) =  eV2erg * &    ! See eq (19) in Aubert(08)
                  (sigec(iP,iE,iI) * group_egy(iP)  &
-                 -signc(iP,iE,iI)*ionEvs(iE,iI))
+                 -signc(iP,iE,iI) * ionEvs(iE,iI))
               PHrate(iP,iE,iI) = max(PHrate(iP,iE,iI),0d0) !Heating > 0
            end do
         end if

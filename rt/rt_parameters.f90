@@ -177,6 +177,7 @@ module rt_parameters
   logical::rtz_include_dust_recombination=.true.
   logical::rtz_include_HM12_UVB=.true.
   logical::rtz_include_auger_ionization=.true.
+  logical::rtz_include_secondary_ionizations=.true.
   logical::isH2_rtz=.false.
   integer,dimension(1:NGROUPS)::isLW=0
   integer,dimension(1:NGROUPS)::isXR=0

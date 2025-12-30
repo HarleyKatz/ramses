@@ -101,7 +101,7 @@ SUBROUTINE get_auger_yields(iElement,n_tot_ions,group_egy,electron_probabilities
      ! Now loop over ionization states and fill out the table
      do i = 1,n_tot_ions
         electron_probabilities(i,:,ig) = auger_yield(iElement,i,:,energy_idx+1) * u_frac
-        electron_probabilities(i,:,ig) = electron_probabilities(i,:,ig) + (auger_yield(iElement,i,:,energy_idx) * (1-u_frac))
+        electron_probabilities(i,:,ig) = electron_probabilities(i,:,ig) + (auger_yield(iElement,i,:,energy_idx) * (1.d0 - u_frac))
      end do
 
      ! In the case where we don't follow every ion we need to update these tables accordingly or else the yields will be wrong
