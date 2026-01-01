@@ -2074,6 +2074,7 @@ subroutine make_sink_from_clump(ilevel)
 #ifdef INDIVIDUAL_SINK_STARS        
         ! Get the metallicity of the sink
         sink_metallicity(isink,:) = sink_metallicity_all(isink,:)
+        ! TODO(fix) HARD-CODED
         star_met = 12.d0 + LOG10((sink_metallicity(isink,5)+1.d-40)/(sink_metallicity(isink,1) * 15.9994d0))
 
         ! Use the metallicity to draw a final mass from the IMF
