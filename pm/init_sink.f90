@@ -24,8 +24,9 @@ subroutine init_sink
   character(LEN=200)::comment_line
 #ifdef INDIVIDUAL_SINK_STARS
   real(dp)::sm1a,stms
-  real(dp)::smet1,smet2,smet3,smet4,smet5,smet6,smet7,smet8,smet9,smet10
-  integer::sef
+!   real(dp)::smet1,smet2,smet3,smet4,smet5,smet6,smet7,smet8,smet9,smet10
+  real(dp), dimension(1:NMETALS)::smet
+  integer::sef, i
 #endif
 
 
@@ -165,7 +166,9 @@ subroutine init_sink
      do
 #ifdef INDIVIDUAL_SINK_STARS
         ! TODO(code): this is currently hardcoded for 10 metal species, need to generalize
-        read(10,'(I10,21(A1,ES17.10),A1,I10,A1,ES17.10,A1,I10,A1,ES17.10,10(A1,ES17.10))',end=104)sid,co, sm1,co,&
+      !   read(10,'(I10,21(A1,ES17.10),A1,I10,A1,ES17.10,A1,I10,A1,ES17.10,10(A1,ES17.10))',end=104)sid,co, sm1,co,&
+        ! Harley's attempt to not hard code things
+        read(10,'(I10,21(A1,ES17.10),A1,I10,A1,ES17.10,A1,I10,A1,ES17.10,*(A1,ES17.10))',end=104)sid,co, sm1,co,&
                            sx1,co,sx2,co,sx3,co, &
                            sv1,co,sv2,co,sv3,co, &
                            sl1,co,sl2,co,sl3,co, &
@@ -175,10 +178,11 @@ subroutine init_sink
                            svg1,co,svg2,co,svg3,co, &
                            sm2,co,dmf,co,slevel,co, &
                            sm1a,co,sef,co,stms,co, &
-                           smet1,co,smet2,co,smet3,co, &
-                           smet4,co,smet5,co,smet6,co, &
-                           smet7,co,smet8,co,smet9,co, &
-                           smet10
+                           (smet(i), co, i=1,NMETALS)
+                           ! smet1,co,smet2,co,smet3,co, &
+                           ! smet4,co,smet5,co,smet6,co, &
+                           ! smet7,co,smet8,co,smet9,co, &
+                           ! smet10
 #else
         read(10,'(I10,21(A1,ES21.10),A1,I10)',end=104)sid,co, sm1,co,&
                            sx1,co,sx2,co,sx3,co, &
@@ -221,16 +225,19 @@ subroutine init_sink
         evolution_flag(nsink)=sef
         main_sequence_time(nsink)=stms
         !TODO(code): hard coded for 10 metals, need to generalize
-        sink_metallicity(nsink,1)=smet1
-        sink_metallicity(nsink,2)=smet2
-        sink_metallicity(nsink,3)=smet3
-        sink_metallicity(nsink,4)=smet4
-        sink_metallicity(nsink,5)=smet5
-        sink_metallicity(nsink,6)=smet6
-        sink_metallicity(nsink,7)=smet7
-        sink_metallicity(nsink,8)=smet8
-        sink_metallicity(nsink,9)=smet9
-        sink_metallicity(nsink,10)=smet10
+      !   sink_metallicity(nsink,1)=smet1
+      !   sink_metallicity(nsink,2)=smet2
+      !   sink_metallicity(nsink,3)=smet3
+      !   sink_metallicity(nsink,4)=smet4
+      !   sink_metallicity(nsink,5)=smet5
+      !   sink_metallicity(nsink,6)=smet6
+      !   sink_metallicity(nsink,7)=smet7
+      !   sink_metallicity(nsink,8)=smet8
+      !   sink_metallicity(nsink,9)=smet9
+      !   sink_metallicity(nsink,10)=smet10
+        do i=1,NMETALS
+          sink_metallicity(nsink,i)=smet(i) 
+        end do
 #endif
      end do
 104  continue

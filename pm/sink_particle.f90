@@ -821,7 +821,8 @@ subroutine grow_sink(ilevel,on_creation)
                     do iElement = 1,27
                        if (elements(iElement)%atomic_number .gt. 0) then
                           counter = counter + 1
-                          loc_metal_yield(counter) = get_portinari_ejecta_mass(star_met, msink_actual(isink) * scale_m/M_sun, iElement)
+                        !   loc_metal_yield(counter) = get_portinari_ejecta_mass(star_met, msink_actual(isink) * scale_m/M_sun, iElement)
+                          loc_metal_yield(counter) = get_nomoto_ejecta(msink_actual(isink) * scale_m/M_sun, star_met, element_idx, .false.)
                        end if
                     end do
                     msink(isink) = msink(isink) - (sum(loc_metal_yield) / (scale_m/M_sun))
@@ -1268,7 +1269,8 @@ subroutine accrete_sink(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,on_creation
                            do iElement = 1,27
                               if (elements(iElement)%atomic_number .gt. 0) then
                                  counter = counter + 1
-                                 loc_metal_yield(counter) = get_portinari_ejecta_mass(star_met, msink_actual(isink) * scale_m/M_sun, iElement)
+                                 ! loc_metal_yield(counter) = get_portinari_ejecta_mass(star_met, msink_actual(isink) * scale_m/M_sun, iElement)
+                                 loc_metal_yield(counter) = get_nomoto_ejecta(msink_actual(isink) * scale_m/M_sun, star_met, element_idx, .false.)
                               end if
                            end do
                         end if

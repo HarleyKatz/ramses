@@ -193,7 +193,7 @@ SUBROUTINE rtz_solve_cooling(T2, aexp, xion, nElement, nCO, &
          end do
       end if
 
-      do i_interp = 1,300
+      do i_interp = 1,500
          ! Initialize the convergence counter
          convergence_counter = 0
 
@@ -201,7 +201,8 @@ SUBROUTINE rtz_solve_cooling(T2, aexp, xion, nElement, nCO, &
             !!! USE FOR EQM TESTS AT CONSTANT T
             ! Set the temperature
             rt_isTconst = .true.
-            rt_Tconst = 10.d0**(((8.d0 - 2.d0) * (real(i_interp,dp) - 1.d0)/(300.d0-1.d0)) + 2.d0)
+            ! rt_Tconst = 10.d0**(((8.d0 - 2.d0) * (real(i_interp,dp) - 1.d0)/(300.d0-1.d0)) + 2.d0)
+            rt_Tconst = 10.d0**(((9.d0 - 3.d0) * (real(i_interp,dp) - 1.d0)/(500.d0-1.d0)) + 3.d0)
          end if
 
          if (rtz_equilibrium_test.eq.1) then 
@@ -214,9 +215,12 @@ SUBROUTINE rtz_solve_cooling(T2, aexp, xion, nElement, nCO, &
             nElement(7,1:ncell)  = nElement(1,1:ncell) * 6.76d-05 * z_ave ! Nitrogen
             nElement(8,1:ncell)  = nElement(1,1:ncell) * 4.90d-04 * z_ave ! Oxygen
             nElement(10,1:ncell) = nElement(1,1:ncell) * 8.51d-05 * z_ave ! Neon
+            nElement(11,1:ncell) = nElement(1,1:ncell) * 1.74d-06 * z_ave ! Sodium
             nElement(12,1:ncell) = nElement(1,1:ncell) * 3.98d-05 * z_ave ! Magnesium
             nElement(14,1:ncell) = nElement(1,1:ncell) * 3.24d-05 * z_ave ! Silicon
             nElement(16,1:ncell) = nElement(1,1:ncell) * 1.32d-05 * z_ave ! Sulfur
+            nElement(18,1:ncell) = nElement(1,1:ncell) * 2.51d-06 * z_ave ! Argon
+            nElement(20,1:ncell) = nElement(1,1:ncell) * 2.19E-06 * z_ave ! Calcium
             nElement(26,1:ncell) = nElement(1,1:ncell) * 3.16d-05 * z_ave ! Iron
             nCO(1:ncell) = 0.0 ! CO
          end if
@@ -1016,22 +1020,27 @@ contains
              end if
 
              ! UVB Photoionization of the less excited state
-             if (rtz_include_photoionization) then 
+             if (rtz_include_HM12_UVB) then
                if (iIon.gt.1) then 
                   cr = cr + (HM12_UVB_z(iElement,iIon-1,1) * ss_factor * dXion(iElement,iIon-1))
                end if
              end if
 
              ! Photoionization by sub-ionizing ISRF --> only impacts lowest ionization states
-             if (rtz_include_HM12_UVB) then 
+             if (rtz_include_photoionization) then 
                if (iIon.eq.2) then 
                   cr = cr + (UV_background_G0 * elements(iElement)%G0_photo_rate * dXion(iElement,iIon-1))
+               end if
+
+               ! Handle Ca+ separately
+               if (iElement.eq.20 .and. iIon.eq.3) then
+                  cr = cr + (UV_background_G0 * 2.45d-12 * dXion(iElement,iIon-1))
                end if
              end if
 
              ! Cosmic ray ionization of the less excited state
              if (rtz_include_cosmic_ray_ionization) then 
-               if (iIon > 1) then 
+               if (iIon .gt. 1) then 
                   cr = cr + (cosmic_ray_ionization_rates(iElement,iIon-1) * total_cosmic_ray_ionization_rate * dXion(iElement,iIon-1))
                end if
              end if
@@ -1148,6 +1157,12 @@ contains
                if (iIon .eq. 1) then
                   de = de + (UV_background_G0 * elements(iElement)%G0_photo_rate)
                end if
+
+               ! Handle Ca+ separately
+               if (iElement.eq.20 .and. iIon.eq.2) then
+                  de = de + (UV_background_G0 * 2.45d-12)
+               end if 
+
              end if
 
              ! Recombination
@@ -1377,9 +1392,9 @@ contains
     dt_rec = min(dt_rec,2.*ddt(icell))
     dt_rec = min(dt_rec,rtz_max_cool_timestep)
     ! Don't let timestep go above 100 years in very dense gas!!!
-    if (nH(icell).ge.8.d4) then 
-       dt_rec = min(dt_rec,100.d0 * 365.25d0 * 24.d0 * 60.d0 * 60.d0 * 1.d5 / nH(icell))
-    end if
+   !  if (nH(icell).ge.10.d0) then 
+   !     dt_rec = min(dt_rec,10000.d0 * 365.25d0 * 24.d0 * 60.d0 * 60.d0 / nH(icell))
+   !  end if
     dt_ok = .true.
     code=0
 

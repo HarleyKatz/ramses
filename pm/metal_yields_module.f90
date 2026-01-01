@@ -6,7 +6,7 @@ module metal_yields_module
   private  ! everything is private by default
   public :: initialize_SN_yields, get_portinari_ejecta_mass, get_portinari_stellar_lifetime
   public :: getStarAgeMyr, get_pop3_lifetime_myr, get_popIII_sn_energy, get_popIII_ejecta
-  public :: get_SNIa_ejecta, get_stellar_lifetime_low_mass
+  public :: get_SNIa_ejecta, get_stellar_lifetime_low_mass, get_nomoto_ejecta
 
   integer, parameter::portinati_N_metal = 5
   integer, parameter::portinati_N_mass = 14
@@ -26,6 +26,15 @@ module metal_yields_module
   real(dp),dimension(1:10,1:7) :: PopIII_SNII
   real(dp),dimension(1:10,1:4) :: PopIII_HN
   real(dp),dimension(1:10,1:6) :: PopIII_PISN
+
+  ! All Nomoto yields
+  real(dp), dimension(1:7) :: table_mass_NOMOTO_SNII = (/ 13.0, 15.0, 18.0, 20.0, 25.0, 30.0, 40.0 /)
+  real(dp), dimension(1:4) :: table_mass_NOMOTO_HN   = (/ 20.0, 25.0, 30.0, 40.0 /)
+  real(dp), dimension(1:4) :: table_metal_NOMOTO     = (/ 0.0, 0.001, 0.004, 0.02 /)
+  real(dp), dimension(1:4) :: table_mass_NOMOTO_PISN = (/ 150.0, 170.0, 200.0, 270.0 /)
+  real(dp), dimension(1:27,1:7,1:4) :: NOMOTO_SN_YIELDS
+  real(dp), dimension(1:27,1:4,1:4) :: NOMOTO_HN_YIELDS
+  real(dp), dimension(1:27,1:4) :: NOMOTO_PISN_YIELDS
 
 CONTAINS
 
@@ -99,7 +108,167 @@ SUBROUTINE initialize_SN_yields()
      read(unit_num, *, iostat=ios) PopIII_PISN(i,:)
   end do ! end loop over metals
 
+
+  ! Load Nomoto SN yields
+  open(newunit=unit_num, file='./data/yields/nomoto_SN_yields.txt', status='old', action='read', iostat=ios)
+  if (ios /= 0) then
+      write(*,*) 'Error: Could not open nomoto_SN_yields yields file'
+      return
+  end if
+
+  do i=1,27 ! loop over metals
+     do j=1,7 ! loop over masses
+        read(unit_num, *, iostat=ios) NOMOTO_SN_YIELDS(i,j,:)
+     end do ! end loop over masses
+  end do ! end loop over metals
+
+  ! Load Nomoto HN yields
+  open(newunit=unit_num, file='./data/yields/nomoto_HN_yields.txt', status='old', action='read', iostat=ios)
+  if (ios /= 0) then
+      write(*,*) 'Error: Could not open nomoto_HN_yields yields file'
+      return
+  end if
+
+  do i=1,27 ! loop over metals
+     do j=1,4 ! loop over masses
+        read(unit_num, *, iostat=ios) NOMOTO_HN_YIELDS(i,j,:)
+     end do ! end loop over masses
+  end do ! end loop over metals
+
+  ! Load Nomoto PISN yields
+  open(newunit=unit_num, file='./data/yields/nomoto_PISN_yields.txt', status='old', action='read', iostat=ios)
+  if (ios /= 0) then
+      write(*,*) 'Error: Could not open nomoto_PISN_yields yields file'
+      return
+  end if
+
+  do i=1,27 ! loop over metals
+      read(unit_num, *, iostat=ios) NOMOTO_PISN_YIELDS(i,:)
+  end do ! end loop over metals
+
+
 END SUBROUTINE initialize_SN_yields
+
+FUNCTION get_nomoto_ejecta(mass, metallicity, element_idx, is_HN) result(fq)
+  implicit none
+  real(dp), intent(in) :: mass, metallicity
+  integer, intent(in) :: element_idx
+  logical, intent(in) :: is_HN
+  real(dp):: xq, yq, frac_high, frac_low
+  real(dp) :: fq
+  integer :: i, j
+  real(dp) :: x1, x2, y1, y2
+  real(dp) :: f11, f21, f12, f22
+  real(dp) :: dx, dy
+  real(dp) :: rescale_factor
+
+  ! Initialize
+  fq = 0.d0
+
+  ! No ejecta for direct collapse
+  if (mass.gt.40.d0.and.mass.lt.150.d0) then
+     return
+  end if
+
+  ! No ejecta for direct collapse
+  if (mass.gt.270.d0) then
+     return
+  end if
+
+  ! Start with the PISN case
+  if (mass.ge.150.d0 .and. mass.le.270.d0) then
+
+       ! Interpolate
+       do i = 1,3
+          if (mass.ge.table_mass_NOMOTO_PISN(i) .and. mass.le.table_mass_NOMOTO_PISN(i+1)) then
+             j = i
+          end if
+       end do
+
+       frac_high = (mass - table_mass_NOMOTO_PISN(j)) / (table_mass_NOMOTO_PISN(j+1) - table_mass_NOMOTO_PISN(j))
+       frac_low = 1.d0 - frac_high
+
+       fq = (frac_low * NOMOTO_PISN_YIELDS(element_idx,j)) + (frac_high * NOMOTO_PISN_YIELDS(element_idx,j+1))
+
+     return
+  end if 
+
+  ! Concinue to lower mass SN
+  rescale_factor = 1.0 ! Rescale factor for metallicity and mass
+
+  ! Next is the HN case
+  if (is_HN) then
+     ! Enforce bounds
+     xq = MIN(MAX(metallicity,table_metal_NOMOTO(1)),table_metal_NOMOTO(4))
+     yq = MIN(MAX(mass,table_mass_NOMOTO_HN(1)),table_mass_NOMOTO_HN(4))
+
+     ! No need to downweight yields
+     ! metallicity lower limit is 0 and we only launch HN in a fixed window of mass
+
+     ! Find i such that x(i) <= xq <= x(i+1)
+     do i = 1, 3
+        if (xq.ge.table_metal_NOMOTO(i) .and. xq.le.table_metal_NOMOTO(i+1)) exit
+     end do
+
+     ! Find j such that y(j) <= yq <= y(j+1)
+     do j = 1, 3
+        if (yq.ge.table_mass_NOMOTO_HN(j) .and. yq.le.table_mass_NOMOTO_HN(j+1)) exit
+     end do
+
+     ! Extract corner values
+     x1 = table_metal_NOMOTO(i);   x2 = table_metal_NOMOTO(i+1)
+     y1 = table_mass_NOMOTO_HN(j);   y2 = table_mass_NOMOTO_HN(j+1)
+
+     f11 = NOMOTO_HN_YIELDS(element_idx, j, i)
+     f21 = NOMOTO_HN_YIELDS(element_idx, j, i+1)
+     f12 = NOMOTO_HN_YIELDS(element_idx, j+1, i)
+     f22 = NOMOTO_HN_YIELDS(element_idx, j+1, i+1)
+
+  ! Otherwise, normal SN
+  else
+     ! Enforce bounds
+     xq = MIN(MAX(metallicity,table_metal_NOMOTO(1)),table_metal_NOMOTO(4))
+     yq = MIN(MAX(mass,table_mass_NOMOTO_SNII(1)),table_mass_NOMOTO_SNII(7))
+
+     ! Downweight the yields if we are below lower limits --> do not extrapolate in the case where we are above!
+     ! No need to downweight metallicity --> lower limit is 0
+     if (mass.lt.table_mass_NOMOTO_SNII(1)) then
+       rescale_factor = rescale_factor * (mass / table_mass_NOMOTO_SNII(1))
+     endif
+
+     ! Find i such that x(i) <= xq <= x(i+1)
+     do i = 1, 3
+        if (xq.ge.table_metal_NOMOTO(i) .and. xq.le.table_metal_NOMOTO(i+1)) exit
+     end do
+
+     ! Find j such that y(j) <= yq <= y(j+1)
+     do j = 1, 6
+        if (yq.ge.table_mass_NOMOTO_SNII(j) .and. yq.le.table_mass_NOMOTO_SNII(j+1)) exit
+     end do
+
+     ! Extract corner values
+     x1 = table_metal_NOMOTO(i);   x2 = table_metal_NOMOTO(i+1)
+     y1 = table_mass_NOMOTO_SNII(j);   y2 = table_mass_NOMOTO_SNII(j+1)
+
+     f11 = NOMOTO_SN_YIELDS(element_idx, j, i)
+     f21 = NOMOTO_SN_YIELDS(element_idx, j, i+1)
+     f12 = NOMOTO_SN_YIELDS(element_idx, j+1, i)
+     f22 = NOMOTO_SN_YIELDS(element_idx, j+1, i+1)
+
+  end if
+
+  dx = x2 - x1
+  dy = y2 - y1
+
+  ! Bilinear interpolation
+  fq = (1.0 / (dx * dy)) * ( &
+        f11 * (x2 - xq) * (y2 - yq) + &
+        f21 * (xq - x1) * (y2 - yq) + &
+        f12 * (x2 - xq) * (yq - y1) + &
+        f22 * (xq - x1) * (yq - y1)   &
+       ) * rescale_factor
+
+END FUNCTION get_nomoto_ejecta
 
 FUNCTION get_popIII_ejecta(mass, species, is_HN) result(fq)
   implicit none
@@ -221,12 +390,22 @@ FUNCTION get_SNIa_ejecta(species) result(ejecta)
       ejecta = 1.01d-01
     case (10) ! Neon
       ejecta = 3.57d-03
+    case (11) ! Sodium
+      ejecta = 3.74d-05
     case (12) ! Magnesium
       ejecta = 1.54d-02
+    case (13) ! Aluminum
+      ejecta = 6.74d-04
     case (14) ! Silicon
       ejecta = 2.87d-01
     case (16) ! Sulfur
       ejecta = 1.15d-01
+    case (17) ! Chlorine
+      ejecta = 2.13d-04
+    case (18) ! Argon
+      ejecta = 1.96d-02
+    case (20) ! Calcium
+      ejecta = 1.48d-02
     case (26) ! Iron
       ejecta = 7.40d-01
   end select

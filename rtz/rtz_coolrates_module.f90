@@ -32,27 +32,27 @@ module rtz_coolrates_module
     0.d0, & ! 3
     0.d0, & ! 4
     0.d0, & ! 5
-    4.561312122d-22, & ! 6 - Carbon
+    4.6185d-22, & ! 6 - Carbon
     0.d0, & ! 7 - Nitrogen
     0.d0, & ! 8 - Oxygen
     0.d0, & ! 9
     0.d0, & ! 10 - Neon
-    0.d0, & ! 11
-    2.123365613d-22, & ! 12 - Magnesium
-    0.d0, & ! 13
-    1.31761296d-20, & ! 14 - Silicon
+    9.0362d-23, & ! 11 - Sodium
+    1.2635d-22, & ! 12 - Magnesium
+    1.0445d-20, & ! 13 - Aluminum
+    9.8347d-21, & ! 14 - Silicon
     0.d0, & ! 15
-    2.03835276d-21, & ! 16 - Sulfur
-    0.d0, & ! 17
-    0.d0, & ! 18
-    0.d0, & ! 19
-    0.d0, & ! 20
+    2.1308d-21, & ! 16 - Sulfur
+    0.d0, & ! 17 - Chlorine
+    0.d0, & ! 18 - Argon
+    0.d0, & ! 19 
+    7.6333d-22, & ! 20 - Calcium
     0.d0, & ! 21
     0.d0, & ! 22
     0.d0, & ! 23
     0.d0, & ! 24
     0.d0, & ! 25
-    1.451738808d-21 & ! 26 - Iron
+    1.4517d-21 & ! 26 - Iron
     /)
 
 CONTAINS
@@ -543,6 +543,19 @@ SUBROUTINE initialize_high_temperature_metal_cooling()
     end do
     close(unit_num)
 
+    ! SODIUM
+    open(newunit=unit_num, file='./data/high_T_cooling/SODIUM/all_cool.dat', status='old', action='read', iostat=ios)
+    if (ios /= 0) then
+        write(*,*) 'Error: Could not open high temperature cooling sodium rates'
+        return
+    end if
+
+    do i = 1, 12
+        read(unit_num, *, iostat=ios) high_t_cooling_rates(:,11,i)
+        if (ios /= 0) exit
+    end do
+    close(unit_num)
+
     ! MAGNESIUM
     open(newunit=unit_num, file='./data/high_T_cooling/MAGNESIUM/all_cool.dat', status='old', action='read', iostat=ios)
     if (ios /= 0) then
@@ -552,6 +565,19 @@ SUBROUTINE initialize_high_temperature_metal_cooling()
 
     do i = 1, 13
         read(unit_num, *, iostat=ios) high_t_cooling_rates(:,12,i)
+        if (ios /= 0) exit
+    end do
+    close(unit_num)
+
+    ! ALUMINUM
+    open(newunit=unit_num, file='./data/high_T_cooling/ALUMINIUM/all_cool.dat', status='old', action='read', iostat=ios)
+    if (ios /= 0) then
+        write(*,*) 'Error: Could not open high temperature cooling aluminum rates'
+        return
+    end if
+
+    do i = 1, 14
+        read(unit_num, *, iostat=ios) high_t_cooling_rates(:,13,i)
         if (ios /= 0) exit
     end do
     close(unit_num)
@@ -578,6 +604,45 @@ SUBROUTINE initialize_high_temperature_metal_cooling()
 
     do i = 1, 17
         read(unit_num, *, iostat=ios) high_t_cooling_rates(:,16,i)
+        if (ios /= 0) exit
+    end do
+    close(unit_num)
+
+    ! CHLORINE
+    open(newunit=unit_num, file='./data/high_T_cooling/CHLORINE/all_cool.dat', status='old', action='read', iostat=ios)
+    if (ios /= 0) then
+        write(*,*) 'Error: Could not open high temperature cooling chlorine rates'
+        return
+    end if
+
+    do i = 1, 18
+        read(unit_num, *, iostat=ios) high_t_cooling_rates(:,17,i)
+        if (ios /= 0) exit
+    end do
+    close(unit_num)
+
+    ! ARGON
+    open(newunit=unit_num, file='./data/high_T_cooling/ARGON/all_cool.dat', status='old', action='read', iostat=ios)
+    if (ios /= 0) then
+        write(*,*) 'Error: Could not open high temperature cooling argon rates'
+        return
+    end if
+
+    do i = 1, 19
+        read(unit_num, *, iostat=ios) high_t_cooling_rates(:,18,i)
+        if (ios /= 0) exit
+    end do
+    close(unit_num)
+
+    ! CALCIUM
+    open(newunit=unit_num, file='./data/high_T_cooling/CALCIUM/all_cool.dat', status='old', action='read', iostat=ios)
+    if (ios /= 0) then
+        write(*,*) 'Error: Could not open high temperature cooling calcium rates'
+        return
+    end if
+
+    do i = 1, 21
+        read(unit_num, *, iostat=ios) high_t_cooling_rates(:,20,i)
         if (ios /= 0) exit
     end do
     close(unit_num)
@@ -625,6 +690,7 @@ SUBROUTINE initialize_high_temperature_metal_cooling()
 
     ! Now we have to do the same thing, but load in the CIE data
 
+    high_t_cooling_temp_CIE = 0.d0
     ! Load temperatures
     open(newunit=unit_num, file='./data/high_T_cooling/CIE/T_CIE.txt', status='old', action='read', iostat=ios)
     if (ios /= 0) then
@@ -637,6 +703,8 @@ SUBROUTINE initialize_high_temperature_metal_cooling()
         if (ios /= 0) exit
     end do
     close(unit_num)
+
+    high_t_cooling_fracs_CIE = 0.d0
 
     ! CARBON
     open(newunit=unit_num, file='./data/high_T_cooling/CIE/C_CIE.txt', status='old', action='read', iostat=ios)
@@ -1814,7 +1882,8 @@ FUNCTION photoheating_UVB_G0(G0, element_number_densities, element_ion_fractions
        end if
 
        rate = rate + (element_number_densities(i) * element_ion_fractions(i,1) * G0_heating_rates(i) * G0) ! erg/s/cm^3
-    
+
+       ! Heating rate is 0 for Ca+ (according to my calculation)
     end do
 
     rate = MAX(rate,1.d-100)
