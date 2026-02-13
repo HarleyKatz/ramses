@@ -262,15 +262,15 @@ subroutine stromgren_radius_refine(ind_cell,ok,ncell,ilevel)
   ! This routine sets flag1 to 1 if the stromgren
   ! radius is not resolved by enough cells
   !-------------------------------------------------
-  integer::i,indi
+  integer::i,indi,idim
   real(dp)::n_strom
   real(dp)::tail_pix
   real(dp)::dens,tempe,etherm,ekk
   real(dp)::lam_HI,alpha,r_s,Q
   real(dp)::scale_l,scale_t,scale_d,scale_v,scale_nH,scale_T2
+  real(dp)::err
 #if NENER>0
   integer::irad
-  real(dp)::err
 #endif
 #ifdef SOLVERmhd
   real(dp)::emag

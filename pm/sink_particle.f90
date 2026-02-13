@@ -977,7 +977,7 @@ subroutine accrete_sink(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,on_creation
   real(dp),dimension(1:ndim)::vv
 
   real(dp),dimension(1:ndim)::r_rel,v_rel,x_acc,p_acc,l_acc
-  real(dp)::fbk_ener_AGN,fbk_mom_AGN,r_len
+  real(dp)::fbk_ener_AGN,fbk_mom_AGN,r_len,jet_mass,jet_mom
   logical,dimension(1:ndim)::period
 
   real(dp)::tan_theta,cone_dist,orth_dist
@@ -991,6 +991,13 @@ subroutine accrete_sink(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,on_creation
   real(dp)::ekinetic, ijm, sn_e_code_units, pre_sn_density
   logical::is_hn, is_sn, is_central_cloud_particle
   integer::counter, iElement, pre_accretion_evolution_flag
+  real(dp),dimension(1:nvector)::jet_weightings
+  real,dimension(1:ndim)::jet_axis
+  real(dp)::jet_ener,stellar_radius,tan_theta_star
+#ifdef SOLVERmhd
+  real(dp),dimension(1:nvector)::jet_weightings_mag
+  real(dp)::jet_ener_mag
+#endif
 #endif
 
   ! Conversion factor from user units to cgs units
@@ -1040,6 +1047,23 @@ subroutine accrete_sink(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,on_creation
      end do
   end do
   call cic_get_cells(indp,xx,vol,ok,ind_grid,xpart,ind_grid_part,ng,np,ilevel)
+
+#ifdef INDIVIDUAL_SINK_STARS
+  ! Get weights for feedback injection - can also add some for accretion if desired
+  if(protostellar_jet)then
+     ! Jet geometry safety net
+     jet_theta0 = max(tiny(0.0d0),jet_theta0)
+     jet_theta0 = min(jet_theta0, 180d0)
+     tan_theta_star = tan(pi/180d0*jet_theta0/2) ! tangent of half of the opening angle
+     call get_feedback_weighting(ind_part,np,tan_theta_star,jet_weightings)
+#ifdef SOLVERmhd
+     if(magnetic_jet_frac.gt.0)then
+        call get_mag_feedback_weighting(ind_part,np,tan_theta,jet_weightings_mag)
+     end if
+#endif
+  end if
+
+#endif
 
   ! Loop over eight CIC volumes
   do ind=1,twotondim
@@ -1338,6 +1362,81 @@ subroutine accrete_sink(ind_grid,ind_part,ind_grid_part,ng,np,ilevel,on_creation
                     unew(indp(j,ind),ivar) = unew(indp(j,ind),ivar) * (unew(indp(j,ind),1) / pre_sn_density)
                  end do
               end if
+
+              else 
+              !!! Protostellar feedback (winds + jets)
+                 ! Carry out the protostellar jet
+                 if(protostellar_jet)then
+                    ! Check if cloud particle is inside the cone
+                    cone_dir(1:ndim)=lsink(isink,1:ndim)/(sqrt(sum(lsink(isink,1:ndim)**2)) + tiny(0.0_dp))
+                    cone_dist=sum(r_rel(1:ndim)*cone_dir(1:ndim))
+                    orth_dist=sqrt(sum((r_rel(1:ndim)-cone_dist*cone_dir(1:ndim))**2))  
+
+                    ! Proceed if within the feedback cone
+                    if(orth_dist.le.abs(cone_dist)*tan_theta_star)then
+                       !TODO (Code): Set radius of the protostar based on other properties. Currently the solar radius is used.
+                       stellar_radius = 6.957e10/scale_l
+
+                       ! Compute jet quantities
+                       ! Mass
+                       jet_mass = jet_mass_frac*dMsink_overdt(isink)*dtnew(ilevel)
+                       ! Momentum
+                       jet_mom  = jet_vel_frac * jet_mass * sqrt(factG * msink(isink) / (stellar_radius+tiny(0.0_dp)))
+                       ! Energy
+                       jet_ener = jet_mass * T_protostellar_jet / scale_T2
+
+#ifdef SOLVERmhd                     
+                       ! MHD contribution
+                       if(magnetic_jet_frac.gt.0.0)then
+                          jet_mom  = jet_mom   * (1.0d0 - magnetic_jet_frac)
+
+                          jet_ener_mag = jet_ener * magnetic_jet_frac
+                          jet_ener_mag = jet_ener_mag * jet_weightings_mag(j)
+                          jet_ener_mag = jet_ener_mag * (weight/volume) / vol_loc
+                          if(agn_inj_method=='mass')then
+                             jet_ener_mag = jet_ener_mag * (d/density)
+                          end if
+                       end if
+#endif  
+
+                       ! Account for jet weightings
+                       jet_mass = jet_mass * jet_weightings(j)
+                       jet_mom  = jet_mom  * jet_weightings(j)
+                       jet_ener = jet_ener * jet_weightings(j)
+
+                       ! Account for cloud particle weightings
+                       jet_mass = jet_mass * (weight/volume) / vol_loc
+                       jet_mom  = jet_mom  * (weight/volume) / vol_loc
+                       jet_ener = jet_ener * (weight/volume) / vol_loc
+                       if(agn_inj_method=='mass')then
+                          jet_mass = jet_mass * (d/density)
+                          jet_mom  = jet_mom  * (d/density)
+                          jet_ener = jet_ener * (d/density)
+                       end if
+
+                       !!! Do the feedback
+                       ! Old version
+                       !unew(indp(j,ind),1)        = unew(indp(j,ind),1)        + jet_mass
+                       !unew(indp(j,ind),2:ndim+1) = unew(indp(j,ind),2:ndim+1) + jet_mom * r_rel(1:ndim) / r_len
+                       !unew(indp(j,ind),neul)     = unew(indp(j,ind),neul)     + sum(jet_mom * r_rel(1:ndim)/r_len * vv(1:ndim))
+                        
+                       ! New version (assigns a set temperature to the jet material)
+                       unew(indp(j,ind),1)        = unew(indp(j,ind),1)        + jet_mass
+                       unew(indp(j,ind),2:ndim+1) = unew(indp(j,ind),2:ndim+1) + jet_mom * dot_product(cone_dir(1:ndim),r_rel(1:ndim))*cone_dir(1:ndim)/(r_len+tiny(0.0_dp))
+                       unew(indp(j,ind),neul)     = unew(indp(j,ind),neul)     + jet_ener
+
+#ifdef SOLVERmhd
+                       !!! Do the MHD feedback
+                       if(magnetic_jet_frac.gt.0.0d0)then
+                          call sink_mag_fbk(isink,ind_grid(ind_grid_part(j)),ind_part(j),jet_ener_mag,indp(j,:),vol(j,:), use_CIC_for_mag_fbk,cone_dir)
+                       end if
+#endif
+
+                       ! Account for the mass lost from the star
+                       msink(isink) = msink(isink) - jet_mass*vol_loc
+
+                    end if
+                 end if
 
            end if
 #endif
@@ -3013,7 +3112,10 @@ subroutine read_sink_params()
        epsilon_kin,AGN_fbk_mode_switch_threshold,kin_mass_loading,bondi_use_vrel,smbh,agn,max_mass_nsc,&
        agn_acc_method,agn_inj_method,sink_descent,gamma_grad_descent,fudge_graddescent, &
        sink_constant_phys_radius,p3_mchar,z_crit_pop3,uniform_rand_seed, &
-       use_bondi_correction
+#ifdef SOLVERmhd
+       magnetic_jet_frac,use_CIC_for_mag_fbk,jet_mag_inj_style,&
+#endif
+       use_bondi_correction,jet_theta0,jet_vel_frac,jet_mass_frac,protostellar_jet
   real(dp)::scale_nH,scale_T2,scale_l,scale_d,scale_t,scale_v
 
   if(.not.cosmo) call units(scale_l,scale_t,scale_d,scale_v,scale_nH,scale_T2)
@@ -3491,6 +3593,538 @@ subroutine synchronize_sink_info
   call MPI_BCAST(new_born,   nsinkmax, MPI_LOGICAL,          1, MPI_COMM_WORLD, info)
 
 end subroutine synchronize_sink_info
+#endif
+!##############################################################################
+!##############################################################################
+!##############################################################################
+!##############################################################################
+subroutine get_feedback_weighting(ind_part,np,tan_theta_star,fbk_weights)
+   use amr_commons
+   use hydro_commons
+   use hydro_parameters
+   use pm_commons
+   use constants, only: pi, c_cgs, factG_in_cgs, M_sun, mH, sigma_t
+   implicit none
+
+   integer::np
+   real(dp)::tan_theta_star
+   integer,dimension(1:nvector)::ind_part
+   real(dp),dimension(1:nvector)::fbk_weights
+   !##############################################################################
+   ! Routine to compute weightings for classical (thermal,momentum) feedback.
+   ! Returns computed fbk_weight.
+   ! Nicholas Choustikov
+   !##############################################################################
+   integer::j,ii,jj,kk,isink
+   real(dp)::scale,dx_min,nx_loc
+   real(dp)::total_weight,local_weight,r_len,rr,rmax,locw,theta
+   real(dp),dimension(1:ndim)::xrel,r_rel
+   real(dp)::cone_dist,orth_dist
+   real(dp),dimension(1:ndim)::jet_axis,cone_dir
+   logical::ok
+   real(dp)::factG,scale_nH,scale_T2,scale_l,scale_d,scale_t,scale_v,scale_m
+
+   ! Conversion factor from user units to cgs units
+   call units(scale_l,scale_t,scale_d,scale_v,scale_nH,scale_T2)
+
+   ! Mesh spacing in that level
+   nx_loc=(icoarse_max-icoarse_min+1)
+   scale=boxlen/dble(nx_loc)
+   dx_min=scale*0.5D0**nlevelmax_sink
+   if (sink_constant_phys_radius) then 
+      dx_min=dx_min/aexp
+   end if
+   rmax=dble(ir_cloud)*dx_min
+   
+   ! Zero the final weights
+   fbk_weights = 0.0
+
+   ! Loop over particles in buffer
+   do j=1,np
+      ! Get sink index
+      isink=-idp(ind_part(j))
+
+      ! Jet axis
+      jet_axis(1:ndim) = lsink(isink,1:ndim) / sqrt(sum(lsink(isink,1:ndim)))
+
+      ! Get relative position of cloud particle from the host sink
+      ! TODO: There is an assumption here, we effectively assume all 8 CIC cells have the same weighting
+      ! based on the cloud particle position
+      r_rel(1:ndim)=(xp(ind_part(j),1:ndim)-xsink(isink,1:ndim))*2/dx_min
+      r_len = sqrt(sum(r_rel**2))
+      theta = acos(dot_product(r_rel(:),jet_axis(:)) / r_len)
+
+      ! Zero the weight
+      total_weight = 0.0; locw=0.0
+
+      ! Loop over possible cloud particles
+      do kk=-2*ir_cloud,2*ir_cloud
+         xrel(3)=dble(kk)
+         do jj=-2*ir_cloud,2*ir_cloud
+            xrel(2)=dble(jj)
+            do ii=-2*ir_cloud,2*ir_cloud
+               xrel(1)=dble(ii)
+               rr=sqrt(sum(xrel**2))
+               theta = acos(dot_product(xrel(:),jet_axis(:)) / rr)
+
+               ! Check if this particle is close enough
+               ok=.false.
+               if(rr<=rmax*2/dx_min)then
+                  cone_dir(1:ndim)=lsink(isink,1:ndim)/(sqrt(sum(lsink(isink,1:ndim)**2))+tiny(0.0_dp))
+                  cone_dist=sum(xrel(1:ndim)*cone_dir(1:ndim))
+                  orth_dist=sqrt(sum((xrel(1:ndim)-cone_dist*cone_dir(1:ndim))**2))
+                  if (orth_dist.le.abs(cone_dist)*tan_theta_star)ok=.true.
+               end if
+
+               if(ok)then
+                  ! Compute weights
+                  call psy_function(rr,theta,local_weight)
+                  ! Sum weights
+                  total_weight = total_weight + local_weight
+               end if
+
+            end do ! End ii loop
+         end do ! End jj loop
+      end do ! End kk loop
+
+      ! Compute weight for cloud particle in question
+      call psy_function(r_len,theta,locw)
+
+      ! Return final weights
+      fbk_weights(j) = locw/total_weight
+        
+      !write(*,*)'wtest:',ind_part(j),isink,r_rel,r_len,theta,locw,total_weight,fbk_weights(j)
+
+   end do ! End j loop
+
+end subroutine get_feedback_weighting
+!##############################################################################
+!##############################################################################
+!##############################################################################
+!##############################################################################
+#ifdef SOLVERmhd
+subroutine get_mag_feedback_weighting(ind_part,np,tan_theta,fbk_weights)
+   use amr_commons
+   use hydro_commons
+   use hydro_parameters
+   use pm_commons
+   use constants, only: pi, c_cgs, factG_in_cgs, M_sun, mH, sigma_t
+   implicit none
+
+   integer::np
+   real(dp)::tan_theta
+   integer,dimension(1:nvector)::ind_part
+   real(dp),dimension(1:nvector)::fbk_weights
+   !##############################################################################
+   ! Routine to compute weightings for classical (thermal,momentum) feedback.
+   ! Returns computed fbk_weight.
+   ! Nicholas Choustikov
+   !##############################################################################
+   integer::j,ii,jj,kk,isink
+   real(dp)::scale,dx_min,nx_loc
+   real(dp)::total_weight,local_weight,r_len,rr,rmax,locw,theta
+   real(dp),dimension(1:ndim)::xrel,r_rel
+   real(dp)::cone_dist,orth_dist
+   real(dp),dimension(1:ndim)::jet_axis,cone_dir
+   logical::ok
+   real(dp)::factG,scale_nH,scale_T2,scale_l,scale_d,scale_t,scale_v,scale_m
+
+   ! Conversion factor from user units to cgs units
+   call units(scale_l,scale_t,scale_d,scale_v,scale_nH,scale_T2)
+
+   ! Mesh spacing in that level
+   nx_loc=(icoarse_max-icoarse_min+1)
+   scale=boxlen/dble(nx_loc)
+   dx_min=scale*0.5D0**nlevelmax_sink
+   if (sink_constant_phys_radius) then 
+      dx_min=dx_min/aexp
+   end if
+   rmax=dble(ir_cloud)*dx_min
+   
+   ! Zero the final weights
+   fbk_weights = 0.0
+
+   ! Loop over particles in buffer
+   do j=1,np
+      ! Get sink index
+      isink=-idp(ind_part(j))
+
+      ! Jet axis
+      jet_axis(1:ndim) = lsink(isink,1:ndim) / sqrt(sum(lsink(isink,1:ndim)))
+
+      ! Get relative position of cloud particle from the host sink
+      ! TODO: There is an assumption here, we effectively assume all 8 CIC cells have the same weighting
+      ! based on the cloud particle position
+      r_rel(1:ndim)=(xp(ind_part(j),1:ndim)-xsink(isink,1:ndim))*2/dx_min
+      r_len = sqrt(sum(r_rel**2))
+      theta = acos(dot_product(r_rel(:),jet_axis(:)) / r_len)
+
+      ! Zero the weight
+      total_weight = 0.0; locw=0.0
+
+      ! Loop over possible cloud particles
+      do kk=-2*ir_cloud,2*ir_cloud
+         xrel(3)=dble(kk)/2
+         do jj=-2*ir_cloud,2*ir_cloud
+            xrel(2)=dble(jj)/2
+            do ii=-2*ir_cloud,2*ir_cloud
+               xrel(1)=dble(ii)/2
+               rr=sqrt(sum(xrel**2))
+               theta = acos(dot_product(xrel(:),jet_axis(:)) / rr)
+
+               ! Check if this particle is close enough
+               ok=.false.
+               ! TODO (Nick): Try to make this identical to the mini-ramses implementation
+               if((rr<=rmax/dx_min).and.(rr>(rmax-1.1)/dx_min))then
+                  !cone_dir(1:ndim)=lsink(isink,1:ndim)/(sqrt(sum(lsink(isink,1:ndim)**2))+tiny(0.0_dp))
+                  cone_dist=sum(xrel(1:ndim)*jet_axis(1:ndim))
+                  orth_dist=sqrt(sum((xrel(1:ndim)-cone_dist*jet_axis(1:ndim))**2))
+                  if (orth_dist.le.abs(cone_dist)*tan_theta)ok=.true.
+               end if
+
+               if(ok)then
+                  ! Compute weights
+                  call psy_function(rr,theta,local_weight)
+                  ! Sum weights
+                  total_weight = total_weight + local_weight
+               end if
+
+            end do ! End ii loop
+         end do ! End jj loop
+      end do ! End kk loop
+
+      ! Compute weight for cloud particle in question
+      call psy_function(r_len,theta,locw)
+
+      ! Return final weights
+      fbk_weights(j) = locw/total_weight
+        
+      !write(*,*)'wtest:',ind_part(j),isink,r_rel,r_len,theta,locw,total_weight,fbk_weights(j)
+
+   end do ! End j loop
+
+end subroutine get_mag_feedback_weighting
+#endif
+!##############################################################################
+!##############################################################################
+!##############################################################################
+!##############################################################################
+subroutine psy_function(r,theta,psy)
+   use pm_commons
+   implicit none
+
+   real(kind=8)::r,theta,psy
+
+   ! Distribution function for protostellar jets
+   !psy = (log(2/jet_theta0)*sin(theta)**2 + jet_theta0**2)**(-1)
+   psy = 1
+
+end subroutine psy_function
+!##############################################################################
+!##############################################################################
+!##############################################################################
+!##############################################################################
+
+#ifdef SOLVERmhd
+subroutine sink_mag_fbk(isink,igrid,ipart,Einj,indp,vol,use_CIC,jet_direction)
+   use amr_commons
+   use pm_commons
+   use hydro_commons
+   implicit none
+   
+   integer::isink,igrid,ipart
+   real(dp)::Einj
+   logical::use_CIC
+   integer,dimension(1:twotondim)::indp
+   real(dp),dimension(1:twotondim)::vol
+   real(dp),dimension(1:ndim)::jet_direction
+   !##############################################################################
+   ! Outer routine to AGN_B_feedback. Computes the relevant quantities
+   ! and deploys the actual feedback routine.
+   ! Based on the routine from Katz+2019, Martin-Alvarez+2021
+
+   ! Nicholas Choustikov
+   !##############################################################################
+   integer::jpart,ilevel,ii,jj,kk,idim,indd
+   real(dp)::Binj
+   real(dp),dimension(1:twondim)::Binj_full
+   real(dp), dimension(1:ndim)::r_hat,Binj_temp,r_hat_new
+   real(dp)::emag0,emag1,eminj,emag0C,emag1C
+   real(dp)::r_mag,sgn
+   real(dp)::epsilon = 1.0d-10
+   integer::loopID
+   integer,dimension(1:2, 1:2, 1:2)::indcube2
+   real(dp),dimension(1:2, 1:2, 1:2)::volume
+
+   real(dp)::scale_nH,scale_T2,scale_l,scale_d,scale_t,scale_v
+   real(dp)::scale_B
+   real::rn
+
+   ! We skip any B field injection if the energy is low - think about this value
+   if(abs(Einj).lt.1.0d-20)return
+
+   call units(scale_l,scale_t,scale_d,scale_v,scale_nH,scale_T2)
+   scale_B = sqrt(scale_d) * scale_l / scale_t
+
+   ! Build indcube2 & volume
+   indd = 0
+   do kk=1,2
+      do jj=1,2
+         do ii=1,2
+            ! Get the cell IDs
+            indd = indd + 1
+            if(use_CIC)then
+               indcube2(ii,jj,kk) = indp(indd)
+               volume(ii,jj,kk)   = vol(indd)
+            else
+               indcube2(ii,jj,kk)= ncoarse + (indd - 1)*ngridmax + igrid   
+               volume(ii,jj,kk) = 1.0d0
+            end if            
+         end do
+      end do
+   end do
+
+   ! Determine the magnetic field to be injected
+   Binj = sqrt(2.0d0*abs(Einj))
+
+   ! Compute jet axis, separation vector etc.
+   r_mag = 0.0d0
+   do idim=1,ndim
+      r_mag = r_mag + (xp(ipart,idim)-xsink(isink,idim))**2
+   end do
+   r_mag = sqrt(r_mag + tiny(0.0d0))
+   r_hat(:) = (xp(ipart,:)-xsink(isink,:))/r_mag
+
+   ! Compute the 6 injected magnitudes (X-,Y-,Z-,X+,Y+,Z+) : (1,2,3,4,5,6)
+   Binj_full=0.0d0
+   if(jet_mag_inj_style==1)then
+      do idim=1,ndim
+         sgn = sign(1.0d0,dot_product(r_hat(:),jet_direction(:)))
+         Binj_full(idim)    = Binj_full(idim)   + Binj*jet_direction(idim)*sgn
+         Binj_full(idim+3)  = Binj_full(idim+3) + Binj*jet_direction(idim)*sgn
+      end do
+   else if(jet_mag_inj_style==2)then
+      do idim=1,ndim
+         sgn = sign(1.0d0,dot_product(r_hat(:),jet_direction(:)))
+         Binj_full(idim)    = Binj_full(idim)   + Binj*jet_direction(idim)!*sgn
+         Binj_full(idim+3)  = Binj_full(idim+3) + Binj*jet_direction(idim)!*sgn
+      end do
+   else if(jet_mag_inj_style==3)then
+      sgn = dot_product(r_hat,jet_direction)
+      do idim=1,ndim
+         Binj_full(idim)   = Binj_full(idim)   + Binj*(3*r_hat(idim)*sgn - jet_direction(idim))
+         Binj_full(idim+3) = Binj_full(idim+3) + Binj*(3*r_hat(idim)*sgn - jet_direction(idim))
+      end do
+   else if(jet_mag_inj_style==4)then
+      do idim=1,ndim
+         sgn = sign(1.0d0,jet_direction(idim))
+         if(abs(jet_direction(idim)).lt.epsilon)sgn=0.0d0
+         Binj_full(idim)   = Binj_full(idim)   + Binj*jet_direction(idim)*sgn
+         Binj_full(idim+3) = Binj_full(idim+3) - Binj*jet_direction(idim)*sgn
+      end do
+   end if
+
+   ! Randomize order of injection
+   call random_number(rn)
+   loopID = int(rn*3)+1
+   call loop_inject_feedback(loopID, Binj_full, indcube2, volume, use_CIC)
+   loopID = mod(loopID,3)+1
+   call loop_inject_feedback(loopID, Binj_full, indcube2, volume, use_CIC)
+   loopID = mod(loopID,3)+1
+   call loop_inject_feedback(loopID, Binj_full, indcube2, volume, use_CIC)
+    
+   !if(verbose_AGN)write(*,*)'Einj,Volumes used',eminj,vol,indp
+end subroutine sink_mag_fbk
+!##############################################################################
+!##############################################################################
+!##############################################################################
+!##############################################################################
+subroutine loop_inject_feedback(loopID, Binj_full, indcube2, volume, use_CIC)
+   use amr_commons
+   use hydro_commons
+   use hydro_parameters
+   use pm_commons
+   implicit none
+
+   integer::loopID
+   real(dp),dimension(1:twondim)::Binj_full
+   integer,dimension(1:2, 1:2, 1:2)::indcube2
+   real(dp),dimension(1:2, 1:2, 1:2)::volume
+   logical::use_CIC
+   !##############################################################################
+   ! Worker routine for AGN_B_injection: directly modifies uold to inject
+   ! magnetic loops with set geometry.
+   ! Based on the routine from Katz+2019, Martin-Alvarez+2021
+   ! Nicholas Choustikov
+   !##############################################################################
+ 
+   ! Conversion from Sergio's notation to Oscar's:
+   ! 1: (1,1,1), 2: (2,1,1), 3: (1,2,1), 4: (2,2,1)
+   ! 5: (1,1,2), 6: (2,1,2), 7: (1,2,2), 8: (2,2,2)  
+ 
+   integer::jpart
+   real(dp)::Binj_decomp
+   real(dp)::vol_tot
+   real(dp),dimension(1:2, 1:2, 1:2)::weight
+ 
+   ! Begin injection
+   if(loopID.eq.1)then ! Compute XY loops
+      ! Compute top loop
+      
+      ! Pre-compute volumes
+      if(use_CIC)then
+         vol_tot = volume(1,1,2) + volume(1,2,2) + volume(2,1,2) + volume(2,2,2)
+         if(vol_tot==0.0d0)return
+         weight(1,1,2)=volume(1,1,2)/vol_tot
+         weight(1,2,2)=volume(1,2,2)/vol_tot
+         weight(2,1,2)=volume(2,1,2)/vol_tot
+         weight(2,2,2)=volume(2,2,2)/vol_tot
+      else
+         weight = 1.0d0
+      end if
+      ! Use decomposed magnetic fields
+      Binj_decomp = Binj_full(6)
+      if(abs(Binj_decomp).gt.0.0)then
+         unew(indcube2(1, 1, 2), nvar+1) = unew(indcube2(1, 1, 2), nvar+1) + Binj_decomp*weight(1,1,2)
+         unew(indcube2(2, 1, 2), neul+1) = unew(indcube2(2, 1, 2), neul+1) + Binj_decomp*weight(2,1,2)
+         unew(indcube2(2, 1, 2), nvar+2) = unew(indcube2(2, 1, 2), nvar+2) + Binj_decomp*weight(2,1,2)
+         unew(indcube2(2, 2, 2), neul+2) = unew(indcube2(2, 2, 2), neul+2) + Binj_decomp*weight(2,2,2)
+         unew(indcube2(2, 2, 2), neul+1) = unew(indcube2(2, 2, 2), neul+1) - Binj_decomp*weight(2,2,2)
+         unew(indcube2(1, 2, 2), nvar+1) = unew(indcube2(1, 2, 2), nvar+1) - Binj_decomp*weight(1,2,2)
+         unew(indcube2(1, 2, 2), neul+2) = unew(indcube2(1, 2, 2), neul+2) - Binj_decomp*weight(1,2,2)
+         unew(indcube2(1, 1, 2), nvar+2) = unew(indcube2(1, 1, 2), nvar+2) - Binj_decomp*weight(1,1,2)
+      end if
+      ! Compute bottom loop
+ 
+      ! Pre-compute volumes
+      if(use_CIC)then
+         vol_tot = volume(1,1,1) + volume(1,2,1) + volume(2,1,1) + volume(2,2,1)
+         if(vol_tot==0.0d0)return
+         weight(1,1,1)=volume(1,1,1)/vol_tot
+         weight(1,2,1)=volume(1,2,1)/vol_tot
+         weight(2,1,1)=volume(2,1,1)/vol_tot
+         weight(2,2,1)=volume(2,2,1)/vol_tot
+      else
+         weight = 1.0d0
+      end if
+      Binj_decomp = Binj_full(3)
+      if(abs(Binj_decomp).gt.0.0)then
+         unew(indcube2(1, 1, 1), nvar+1) = unew(indcube2(1, 1, 1), nvar+1) + Binj_decomp*weight(1,1,1)
+         unew(indcube2(2, 1, 1), neul+1) = unew(indcube2(2, 1, 1), neul+1) + Binj_decomp*weight(2,1,1)
+         unew(indcube2(2, 1, 1), nvar+2) = unew(indcube2(2, 1, 1), nvar+2) + Binj_decomp*weight(2,1,1)
+         unew(indcube2(2, 2, 1), neul+2) = unew(indcube2(2, 2, 1), neul+2) + Binj_decomp*weight(2,2,1)
+         unew(indcube2(2, 2, 1), neul+1) = unew(indcube2(2, 2, 1), neul+1) - Binj_decomp*weight(2,2,1)
+         unew(indcube2(1, 2, 1), nvar+1) = unew(indcube2(1, 2, 1), nvar+1) - Binj_decomp*weight(1,2,1)
+         unew(indcube2(1, 2, 1), neul+2) = unew(indcube2(1, 2, 1), neul+2) - Binj_decomp*weight(1,2,1)
+         unew(indcube2(1, 1, 1), nvar+2) = unew(indcube2(1, 1, 1), nvar+2) - Binj_decomp*weight(1,1,1)
+      end if
+
+   else if(loopID.eq.2)then ! Compute XZ loops
+      ! Compute back loop
+ 
+      ! Pre-compute volumes
+      if(use_CIC)then
+         vol_tot = volume(1,1,1) + volume(1,1,2) + volume(2,1,1) + volume(2,1,2)
+         if(vol_tot==0.0d0)return
+         weight(1,1,1)=volume(1,1,1)/vol_tot
+         weight(1,1,2)=volume(1,1,2)/vol_tot
+         weight(2,1,1)=volume(2,1,1)/vol_tot
+         weight(2,1,2)=volume(2,1,2)/vol_tot
+      else
+         weight = 1.0d0
+      end if
+      ! Decompose magnetic field around jet axis
+      Binj_decomp = Binj_full(5)
+      if(abs(Binj_decomp).gt.0.0)then
+         unew(indcube2(1, 1, 1), nvar+1) = unew(indcube2(1, 1, 1), nvar+1) + Binj_decomp*weight(1,1,1)
+         unew(indcube2(2, 1, 1), neul+1) = unew(indcube2(2, 1, 1), neul+1) + Binj_decomp*weight(2,1,1)
+         unew(indcube2(2, 1, 1), nvar+3) = unew(indcube2(2, 1, 1), nvar+3) + Binj_decomp*weight(2,1,1)
+         unew(indcube2(2, 1, 2), neul+3) = unew(indcube2(2, 1, 2), neul+3) + Binj_decomp*weight(2,1,2)
+         unew(indcube2(2, 1, 2), neul+1) = unew(indcube2(2, 1, 2), neul+1) - Binj_decomp*weight(2,1,2)
+         unew(indcube2(1, 1, 2), nvar+1) = unew(indcube2(1, 1, 2), nvar+1) - Binj_decomp*weight(1,1,2)
+         unew(indcube2(1, 1, 2), neul+3) = unew(indcube2(1, 1, 2), neul+3) - Binj_decomp*weight(1,1,2)
+         unew(indcube2(1, 1, 1), nvar+3) = unew(indcube2(1, 1, 1), nvar+3) - Binj_decomp*weight(1,1,1)
+      end if
+      ! Compute front loop
+ 
+      ! Pre-compute volumes
+      if(use_CIC)then
+         vol_tot = volume(1,2,1) + volume(1,2,2) + volume(2,2,1) + volume(2,2,2)
+         if(vol_tot==0.0d0)return
+         weight(1,2,1)=volume(1,2,1)/vol_tot
+         weight(1,2,2)=volume(1,2,2)/vol_tot
+         weight(2,2,1)=volume(2,2,1)/vol_tot
+         weight(2,2,2)=volume(2,2,2)/vol_tot
+      else
+         weight = 1.0d0
+      end if
+      Binj_decomp = Binj_full(2)
+      if(abs(Binj_decomp).gt.0.0)then
+         unew(indcube2(1, 2, 1), nvar+1) = unew(indcube2(1, 2, 1), nvar+1) + Binj_decomp*weight(1,2,1)
+         unew(indcube2(2, 2, 1), neul+1) = unew(indcube2(2, 2, 1), neul+1) + Binj_decomp*weight(2,2,1)
+         unew(indcube2(2, 2, 1), nvar+3) = unew(indcube2(2, 2, 1), nvar+3) + Binj_decomp*weight(2,2,1)
+         unew(indcube2(2, 2, 2), neul+3) = unew(indcube2(2, 2, 2), neul+3) + Binj_decomp*weight(2,2,2)
+         unew(indcube2(2, 2, 2), neul+1) = unew(indcube2(2, 2, 2), neul+1) - Binj_decomp*weight(2,2,2)
+         unew(indcube2(1, 2, 2), nvar+1) = unew(indcube2(1, 2, 2), nvar+1) - Binj_decomp*weight(1,2,2)
+         unew(indcube2(1, 2, 2), neul+3) = unew(indcube2(1, 2, 2), neul+3) - Binj_decomp*weight(1,2,2)
+         unew(indcube2(1, 2, 1), nvar+3) = unew(indcube2(1, 2, 1), nvar+3) - Binj_decomp*weight(1,2,1)
+      end if
+  
+   else if(loopID.eq.3)then ! Compute YZ loops
+      ! Compute left loop
+ 
+      ! Pre-compute volumes
+      if(use_CIC)then
+         vol_tot = volume(1,1,1) + volume(1,1,2) + volume(1,2,1) + volume(1,2,2)
+         if(vol_tot==0.0d0)return
+         weight(1,1,1)=volume(1,1,1)/vol_tot
+         weight(1,1,2)=volume(1,1,2)/vol_tot
+         weight(1,2,1)=volume(1,2,1)/vol_tot
+         weight(1,2,2)=volume(1,2,2)/vol_tot
+      else
+         weight = 1.0d0
+      end if
+      ! Decompose magnetic field around jet axis
+      Binj_decomp = Binj_full(4)
+      if(abs(Binj_decomp).gt.0.0)then
+         unew(indcube2(1, 1, 1), nvar+2) = unew(indcube2(1, 1, 1), nvar+2) + Binj_decomp*weight(1,1,1)
+         unew(indcube2(1, 2, 1), neul+2) = unew(indcube2(1, 2, 1), neul+2) + Binj_decomp*weight(1,2,1)
+         unew(indcube2(1, 2, 1), nvar+3) = unew(indcube2(1, 2, 1), nvar+3) + Binj_decomp*weight(1,2,1)
+         unew(indcube2(1, 2, 2), neul+3) = unew(indcube2(1, 2, 2), neul+3) + Binj_decomp*weight(1,2,2)
+         unew(indcube2(1, 2, 2), neul+2) = unew(indcube2(1, 2, 2), neul+2) - Binj_decomp*weight(1,2,2)
+         unew(indcube2(1, 1, 2), nvar+2) = unew(indcube2(1, 1, 2), nvar+2) - Binj_decomp*weight(1,1,2)
+         unew(indcube2(1, 1, 2), neul+3) = unew(indcube2(1, 1, 2), neul+3) - Binj_decomp*weight(1,1,2)
+         unew(indcube2(1, 1, 1), nvar+3) = unew(indcube2(1, 1, 1), nvar+3) - Binj_decomp*weight(1,1,1)
+      end if 
+      ! Compute right loop
+
+      ! Pre-compute volumes
+      if(use_CIC)then
+         vol_tot = volume(2,1,1) + volume(2,1,2) + volume(2,2,1) + volume(2,2,2)
+         if(vol_tot==0.0d0)return
+         weight(2,1,1)=volume(2,1,1)/vol_tot
+         weight(2,1,2)=volume(2,1,2)/vol_tot
+         weight(2,2,1)=volume(2,2,1)/vol_tot
+         weight(2,2,2)=volume(2,2,2)/vol_tot
+      else
+         weight = 1.0d0
+      end if
+      Binj_decomp = Binj_full(1)
+      if(abs(Binj_decomp).gt.0.0)then
+         unew(indcube2(2, 1, 1), nvar+2) = unew(indcube2(2, 1, 1), nvar+2) + Binj_decomp*weight(2,1,1)
+         unew(indcube2(2, 2, 1), neul+2) = unew(indcube2(2, 2, 1), neul+2) + Binj_decomp*weight(2,2,1)
+         unew(indcube2(2, 2, 1), nvar+3) = unew(indcube2(2, 2, 1), nvar+3) + Binj_decomp*weight(2,2,1)
+         unew(indcube2(2, 2, 2), neul+3) = unew(indcube2(2, 2, 2), neul+3) + Binj_decomp*weight(2,2,2)
+         unew(indcube2(2, 2, 2), neul+2) = unew(indcube2(2, 2, 2), neul+2) - Binj_decomp*weight(2,2,2)
+         unew(indcube2(2, 1, 2), nvar+2) = unew(indcube2(2, 1, 2), nvar+2) - Binj_decomp*weight(2,1,2)
+         unew(indcube2(2, 1, 2), neul+3) = unew(indcube2(2, 1, 2), neul+3) - Binj_decomp*weight(2,1,2)
+         unew(indcube2(2, 1, 1), nvar+3) = unew(indcube2(2, 1, 1), nvar+3) - Binj_decomp*weight(2,1,1)
+      end if
+   else
+      write(*,*) "Error injecting for B_AGN"
+   end if
+ 
+end subroutine loop_inject_feedback
 #endif
 !##############################################################################
 !##############################################################################

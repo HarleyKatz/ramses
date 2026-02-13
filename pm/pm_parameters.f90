@@ -100,6 +100,16 @@ module pm_parameters
   real(dp) :: imf_m2 = 300.d0
   real(dp) :: imf_a1 = -1.3d0
   real(dp) :: imf_a2 = -2.3d0
+
+  !!! Protostellar jets (following Cunningham+2011, STARFORGE: Grudic+2020)
+  logical  :: protostellar_jet = .false. ! Whether to launch a jet during the protostellar phase
+  real(dp) :: jet_theta0       = 30      ! Twice the opening angle for jet
+  real(dp) :: jet_vel_frac     = 0.3     ! Fraction of keplerian velocity directed into the jet
+  real(dp) :: jet_mass_frac    = 0.3     ! Fraction of accreted mass directed into the jet
+  real(dp) :: magnetic_jet_frac = 0.01     ! Fraction of jet energy which is converted into magnetic energy 
+  logical  :: use_CIC_for_mag_fbk = .true. ! Whether to use CIC weights during the magnetized feedback routine
+  real(dp) :: T_protostellar_jet = 1d4     ! Temperature of the ionized gas in protostellar jets
+  integer  :: jet_mag_inj_style = 1        ! Injection style for the magnetized jet
   integer :: uniform_rand_seed = 42 
 #endif 
 
